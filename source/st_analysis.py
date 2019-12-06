@@ -98,6 +98,7 @@ def create_R(shape_V, shape_P):
                    ('strenght', np.float16),  # parametro forza del gradiente (w1 .=. w2 .=. w3)
                    ('cilindrical_dim', np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
                    ('planar_dim', np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
+                   ('fa', np.float16), # fractional anisotropy (0-> isotropic, 1-> max anisotropy
                    ('local_disarray', np.float16),  # where store local_disarray results
                    ]
         ).reshape(shape_R)
@@ -232,8 +233,13 @@ def Structure_Tensor_Analysis_3D(vol):
     for axis in range(v.shape[1]):
         ev_rotated[:, axis] = check_in_upper_semisphere(v[:, axis])
 
-    # parameri di forza
+    # parameri di forma
     shape_parameters = dict()
+
+    # calcolo fractional anisotropy (0 isotropy -> 1 anisotropy)
+    shape_parameters['fa'] = np.sqrt(1/2) * (
+        np.sqrt((w[0] - w[1]) ** 2 + (w[1] - w[2]) ** 2 + (w[2] - w[1]) ** 2) / np.sqrt(np.sum(w ** 2))
+    )
 
     # calcolo parametro forza del gradiente (per distinguere contenuto da sfondo)
     # (w1 .=. w2 .=. w3)
