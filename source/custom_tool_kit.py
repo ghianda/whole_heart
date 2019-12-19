@@ -9,7 +9,8 @@ def write_on_txt(strings, txt_path, _print=False, mode='a'):
     with open(txt_path, mode=mode) as txt:
         for s in strings:
             txt.write(s + '\n')
-            if _print: print(s)
+            if _print:
+                print(s)
 
 
 def all_words_in_txt(filepath):

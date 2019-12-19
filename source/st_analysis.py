@@ -52,11 +52,12 @@ from scipy import ndimage as ndi
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     all_words_in_txt, search_value_in_txt, pad_dimension, write_on_txt
 from custom_image_base_tool import normalize, print_info
-from local_disarray_by_R import estimate_local_disarry
+from local_disarray_by_R import estimate_local_disarry, save_in_numpy_file, compile_results_strings, \
+    statistic_strings_of_valid_values
 
 
 class Bcolors:
-    HEADER = '\033[95m'
+    V = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -64,6 +65,15 @@ class Bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+class Mode:
+    # to select which type of local disarray is:
+    # estimated with arithmetic average
+    # or
+    #estimated with weighted average
+    ARITH = 'arithmetic'
+    WEIGHT = 'weighted'
 
 
 class Cell_Ratio_mode:
@@ -99,7 +109,8 @@ def create_R(shape_V, shape_P):
                    ('cilindrical_dim', np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
                    ('planar_dim', np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
                    ('fa', np.float16), # fractional anisotropy (0-> isotropic, 1-> max anisotropy
-                   ('local_disarray', np.float16),  # where store local_disarray results
+                   ('local_disarray', np.float16),  # where will store local_disarray
+                   ('local_disarray_w', np.float16)  # where will store local_disarray using FA as weight for the versors
                    ]
         ).reshape(shape_R)
 
@@ -176,9 +187,7 @@ def downsample_2_zeta_resolution(vol, px_size_xy, px_size_z, sigma):
     return downsampled
 
 
-def Structure_Tensor_Analysis_3D(vol):
-    # TODO DA MMODIFICARE COMMENTI (farlo per 3d)
-
+def structure_tensor_analysis_3d(vol):
     #
     # Structure Tensor definita così:
     # ogni elemento (i,j) dello ST sarà la media della matrice IiIj
@@ -189,7 +198,6 @@ def Structure_Tensor_Analysis_3D(vol):
     # |IzIx  IzIy  IzIz|     ->   |mean(IzIx)  mean(IzIy)  mean(IzIz)|
     #   (3 x 3 x m x m)      -->                 (3 x 3)
     #    m : ROI side
-    #
     #
     # INPUT: vol (rcz = yxz)
     # OUTPUT: (eigenvalues, eigenvectors, shape_parameters)
@@ -291,7 +299,7 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
         # - v : ordered eigenvectors
         #       the column v[:,i] is the eigenvector corresponding to the eigenvalue w[i].
         # - shape_parameters : dictionary con form parameters
-        w, v, shape_parameters = Structure_Tensor_Analysis_3D(parall_down)
+        w, v, shape_parameters = structure_tensor_analysis_3d(parall_down)
 
         # TODO CONTROLLO SUI PARAMETRI  DI FORMA
         if shape_parameters['strenght'] > 0:
@@ -313,6 +321,72 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
     return there_is_cell, there_is_info, results
 
 
+def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose):
+    # virtually dissect 'volume', perform on each block the analysis implemented in 'block_analysis',
+    # and save the results inside R
+
+    # estimate sigma of blurring for isotropic resolution
+    sigma_blur = sigma_for_uniform_resolution(FWHM_xy=parameters['fwhm_xy'],
+                                              FWHM_z=parameters['fwhm_z'],
+                                              px_size_xy=parameters['px_size_xy'])
+
+    perc = 0
+    count = 0  # count iteration
+    tot = np.prod(shape_R)
+    print(' > Expected iterations : ', tot)
+
+    for z in range(shape_R[2]):
+        if _verbose: print('\n\n')
+        print('{0:0.1f} % - z: {1:3}'.format(perc, z))
+        for r in range(shape_R[0]):
+            for c in range(shape_R[1]):
+
+                start_coord = create_coord_by_iter(r, c, z, shape_P)
+                slice_coord = create_slice_coordinate(start_coord, shape_P)
+
+                perc = 100 * (count / tot)
+                if _verbose: print('\n')
+
+                # save init info in R
+                R[r, c, z]['id_block'] = count
+                R[r, c, z]['init_coord'] = start_coord
+
+                # extract parallelepiped
+                parall = volume[tuple(slice_coord)]
+
+                # check dimension (if iteration is on border of volume, add zero_pad)
+                parall = pad_dimension(parall, shape_P)
+
+                # If it's not all black...
+                if np.max(parall) != 0:
+
+                    # analysis of parallelepiped extracted
+                    there_is_cell, there_is_info, results = block_analysis(
+                        parall,
+                        shape_P,
+                        parameters,
+                        sigma_blur,
+                        _verbose)
+
+                    # save info in R[r, c, z]
+                    if there_is_cell: R[r, c, z]['cell_info'] = True
+                    if there_is_info: R[r, c, z]['orient_info'] = True
+
+                    # save results in R
+                    if _verbose: print(' saved in R:  ')
+                    for key in results.keys():
+                        R[r, c, z][key] = results[key]
+                        if _verbose:
+                            print(' > {} : {}'.format(key, R[r, c, z][key]))
+
+                else:
+                    if _verbose: print('   block rejected   ')
+                    print()
+
+                count += 1
+    return R, count
+
+
 # =================================================== MAIN () ================================================
 def main(parser):
 
@@ -331,11 +405,12 @@ def main(parser):
 
     # extract other preferences
     _verbose = args.verbose
+    _deep_verbose = args.deep_verbose
     _save_csv = args.csv
 
     # create sointroductiveme informations
     mess_strings = list()
-    mess_strings.append('\n\n*** ST orientation Analysis ***\n')
+    mess_strings.append(Bcolors.OKBLUE + '\n\n*** ST orientation Analysis ***\n' + Bcolors.ENDC)
     mess_strings.append(' > source path: {}'.format(source_path))
     mess_strings.append(' > stack name: {}'.format(stack_name))
     mess_strings.append(' > process folder: {}'.format(process_folder))
@@ -344,7 +419,7 @@ def main(parser):
     mess_strings.append(' > Parameter filepath: {}'.format(parameter_filepath))
     mess_strings.append('')
 
-    # TODO here added local_disarray_z_side and local_disarray_xy_side
+    # (TODO) here added local_disarray_z_side and local_disarray_xy_side
     # extract parameters
     param_names = ['roi_xy_pix',
                    'px_size_xy', 'px_size_z',
@@ -386,12 +461,12 @@ def main(parser):
         num_of_slices_P * parameters['px_size_z']))
 
     # create result.txt filename:
-    txt_filename = 'Orientations_' + stack_prefix + '_' \
+    txt_info_filename = 'Orientations_INFO_' + stack_prefix + '_' \
                    + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.txt'
-    txt_path = os.path.join(os.path.dirname(source_path), txt_filename)
+    txt_info_path = os.path.join(os.path.dirname(source_path), txt_info_filename)
 
-    # print and write into .txt introductive informations
-    write_on_txt(mess_strings, txt_path, _print=True)
+    # print to screen, create .txt file and write into .txt file all introductive informations
+    write_on_txt(mess_strings, txt_info_path, _print=True, mode='w')
     # clear list of strings
     mess_strings.clear()
 
@@ -417,88 +492,35 @@ def main(parser):
     info = print_info(volume, text='\nVolume informations:', _std=False, _return=True)
     mess_strings = mess_strings + info
 
-    # print and write into .txt
-    write_on_txt(mess_strings, txt_path, _print=True)
+    # print and add to .txt
+    write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
     # clear list of strings
     mess_strings.clear()
 
     # 2 ----------------------------------------------------------------------------------------------------
     # CYCLE FOR BLOCKS EXTRACTION and ANALYSIS
     print('\n\n')
-    print('*** Start Structure Tensor analysis... ')
+    print(Bcolors.OKBLUE + '*** Start Structure Tensor analysis... ' + Bcolors.ENDC)
 
     t_start = time.time()
 
     # create empty Result matrix
     R, shape_R = create_R(shape_V, shape_P)
 
-    # estimate sigma of blurring for isotropic resolution
-    sigma_blur = sigma_for_uniform_resolution(FWHM_xy=parameters['fwhm_xy'],
-                                              FWHM_z=parameters['fwhm_z'],
-                                              px_size_xy=parameters['px_size_xy'])
-    perc = 0
-    count = 0  # count iteration
-    tot = np.prod(shape_R)
-    print(' > Expected iterations : ', tot)
+    # real analysis on R
+    R, count = iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose)
 
-    for z in range(shape_R[2]):
-        if _verbose: print('\n\n')
-        print('{0:0.1f} % - z: {1:3}'.format(perc, z))
-        for r in range(shape_R[0]):
-            for c in range(shape_R[1]):
-
-                start_coord = create_coord_by_iter(r, c, z, shape_P)
-                slice_coord = create_slice_coordinate(start_coord, shape_P)
-
-                perc = 100 * (count / tot)
-                if _verbose: print('\n')
-
-                # save init info in R
-                R[r, c, z]['id_block'] = count
-                R[r, c, z]['init_coord'] = start_coord
-
-                # extract parallelepiped
-                parall = volume[slice_coord]
-
-                # check dimension (if iteration is on border of volume, add zero_pad)
-                parall = pad_dimension(parall, shape_P)
-
-                # If it's not all black...
-                if np.max(parall) != 0:
-
-                    # analysis of parallelepiped extracted
-                    there_is_cell, there_is_info, results = block_analysis(
-                        parall,
-                        shape_P,
-                        parameters,
-                        sigma_blur,
-                        _verbose)
-
-                    # save info in R[r, c, z]
-                    if there_is_cell: R[r, c, z]['cell_info'] = True
-                    if there_is_info: R[r, c, z]['orient_info'] = True
-
-                    # save results in R
-                    if _verbose: print(' saved in R:  ')
-                    for key in results.keys():
-                        R[r, c, z][key] = results[key]
-                        if _verbose:
-                            print(' > {} : {}'.format(key, R[r, c, z][key]))
-
-                else:
-                    if _verbose: print('   block rejected   ')
-                    print()
-
-                count += 1
-
+    # extract informations about the data analyzed
     block_with_cell = np.count_nonzero(R['cell_info'])
     block_with_info = np.count_nonzero(R['orient_info'])
     p_rejec_cell = 100 * (1 - (block_with_cell / count))
     p_rejec_info_tot = 100 * (1 - (block_with_info / count))
     p_rejec_info = 100 * (1 - (block_with_info / block_with_cell))
 
+    # end analysis
     t_process = time.time() - t_start
 
+    # create results strings
     mess_strings.append('\n\n*** Results of Orientation analysis:')
     mess_strings.append(' > Expected iterations : {}'.format(np.prod(shape_R)))
     mess_strings.append(' > total_ iteration : {}'.format(count))
@@ -514,21 +536,9 @@ def main(parser):
         block_with_cell - block_with_info, p_rejec_info))
 
     # print and write into .txt
-    write_on_txt(mess_strings, txt_path, _print=True)
+    write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
     # clear list of strings
     mess_strings.clear()
-
-    # 3 ----------------------------------------------------------------------------------------------------
-    # Disarray estimation
-
-    # the function estimate local disarrays and write these values also inside R
-    matrix_of_disarrays, shape_G, R = estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=False)
-
-    # extract only valid disarray values
-    disarray_values = matrix_of_disarrays[matrix_of_disarrays != -1]
-
-    # 4 ----------------------------------------------------------------------------------------------------
-    # WRITE RESULTS AND SAVE
 
     # create result matrix (R) filename:
     R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
@@ -539,49 +549,81 @@ def main(parser):
     np.save(R_filepath, R)
     mess_strings.append('\n > R matrix saved in: {}'.format(os.path.dirname(source_path)))
     mess_strings.append(' > with name: {}'.format(R_filename))
-
-    mess_strings.append('\n > Results .txt file saved in: {}'.format(os.path.dirname(txt_path)))
-    mess_strings.append(' > with name: {}'.format(txt_filename))
-
-    # create filename of numpy.file where save disarray matrix
-    disarray_numpy_filename = 'MatrixDisarray_{}_G({},{},{})_limNeig{}.npy'.format(
-        R_prefix,
-        int(shape_G[0]), int(shape_G[1]), int(shape_G[2]),
-        int(parameters['neighbours_lim']))
-
-    mess_strings.append('\n> Matrix of Disarray saved in:')
-    mess_strings.append(os.path.join(base_path, process_folder))
-    mess_strings.append(' > with name: \n{}'.format(disarray_numpy_filename))
-
-    # save numpy file
-    np.save(os.path.join(base_path, process_folder, disarray_numpy_filename), matrix_of_disarrays)
-
-
-
-    # create results strings
-    mess_strings.append('\n\n*** Results of statistical analysis of Disarray on accepted points. \n')
-    mess_strings.append('> Disarray (%):= 100 * (1 - alignment)\n')
-    mess_strings.append('> Matrix of disarray shape: {}'.format(matrix_of_disarrays.shape))
-    mess_strings.append('> Valid disarray values: {}'.format(disarray_values.shape))
-    mess_strings.append('\n> Disarray mean: {0:0.2f}%'.format(np.mean(disarray_values)))
-    mess_strings.append('> Disarray std: {0:0.2f}% '.format(np.std(disarray_values)))
-    mess_strings.append(
-        '> Disarray (min, MAX)%: ({0:0.2f}, {1:0.2f})'.format(np.min(disarray_values), np.max(disarray_values)))
-
-    # create results.txt filename and filepath
-    disarray_results_filename = 'results_disarray_by_{}_G({},{},{})_limNeig{}.txt'.format(
-        R_prefix,
-        int(shape_G[0]), int(shape_G[1]), int(shape_G[2]),
-        int(parameters['neighbours_lim']))
-
-    disarray_txt_filepath = os.path.join(base_path, process_folder, disarray_results_filename)
-
-    if _save_csv:
-        disarray_csv_filename = disarray_results_filename.split('.')[0] + '.csv'
-        np.savetxt(os.path.join(base_path, process_folder, disarray_csv_filename), disarray_values, delimiter=",", fmt='%f')
+    mess_strings.append('\n > Results .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
+    mess_strings.append(' > with name: {}'.format(txt_info_filename))
 
     # print and write into .txt
-    write_on_txt(mess_strings, disarray_txt_filepath, _print=True)
+    write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
+
+    # 3 ----------------------------------------------------------------------------------------------------
+    # Disarray and Fractional Anisotropy estimation
+
+    # the function estimate local disarrays and fractional anisotropy and write these values also inside R
+    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarry(R, parameters,
+                                                                                   ev_index=2,
+                                                                                   _verb=_verbose,
+                                                                                   _verb_deep=_deep_verbose)
+
+    # 4 ----------------------------------------------------------------------------------------------------
+    # WRITE RESULTS AND SAVE
+
+    # save numpy file of both disarrays matrix (calculated with arithmetic and weighted average)
+    # and get their filenames
+    # [estraggo lista degli attributi della classe Mode
+    # e scarto quelli che cominciao con '_' perchè saranno moduli]
+    disarray_numpy_filename = dict()
+    for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
+        disarray_numpy_filename[getattr(Mode, mode)] = save_in_numpy_file(
+                                                            matrices_of_disarrays[getattr(Mode, mode)],
+                                                            R_prefix, shape_G,
+                                                            parameters, base_path, process_folder,
+                                                            data_prefix='MatrixDisarray_{}_'.format(mode))
+
+    # save numpy file of fractional anisotropy
+    fa_numpy_filename = save_in_numpy_file(matrix_of_local_fa, R_prefix, shape_G, parameters,
+                                           base_path, process_folder, data_prefix='FA_local_')
+
+    mess_strings.append('\nMatrix of Disarray and Fractional Anisotropy saved in:')
+    mess_strings.append('> {}'.format(os.path.join(base_path, process_folder)))
+    mess_strings.append('with name: {}\n > {}\n > {}\n'.format(
+                                                                disarray_numpy_filename[Mode.ARITH],
+                                                                disarray_numpy_filename[Mode.WEIGHT],
+                                                                fa_numpy_filename))
+    mess_strings.append('\n')
+
+    # estimate statistics (avg, std, max, min) of both disarray (arithm and weighted) and fa
+    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH],
+                                                             weights=matrix_of_local_fa)
+    disarray_WEIGHT_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.WEIGHT],
+                                                              weights=matrix_of_local_fa)
+    fa_stats = statistic_strings_of_valid_values(matrix_of_local_fa)
+
+    # compile and append disarray results strings
+    s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], disarray_ARITM_stats, fa_stats)
+    s2 = compile_results_strings(matrices_of_disarrays[Mode.WEIGHT], disarray_WEIGHT_stats, fa_stats)
+    disarray_and_fa_results_strings = s1 + ['\n\n\n'] + s2
+
+    # update mess strings
+    mess_strings = mess_strings + disarray_and_fa_results_strings
+
+    # create results.txt filename and filepath
+    txt_results_filename = 'results_disarray_by_{}_G({},{},{})_limNeig{}.txt'.format(
+        R_prefix,
+        int(shape_G[0]), int(shape_G[1]), int(shape_G[2]),
+        int(parameters['neighbours_lim']))
+
+    if _save_csv:
+        for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
+            # extract only valid disarray values
+            disarray_values = matrices_of_disarrays[getattr(Mode, mode)][matrices_of_disarrays[getattr(Mode, mode)] != -1]
+            disarray_csv_filename = txt_results_filename.split('.')[0] + '_{}.csv'.format(getattr(Mode, mode))
+            np.savetxt(os.path.join(base_path, process_folder, disarray_csv_filename),
+                       disarray_values,
+                       delimiter=",", fmt='%f')
+
+    # print and write into .txt
+    txt_results_filepath = os.path.join(base_path, process_folder, txt_results_filename)
+    write_on_txt(mess_strings, txt_results_filepath, _print=True, mode='w')
 
 # =============================================== END MAIN () ================================================
 
@@ -596,7 +638,8 @@ if __name__ == '__main__':
                            help='filename of parameters.txt file (in the same folder of stack)', required=True)
     my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
                            help='print additional informations')
-
+    my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
+                           help='[debug mode] - print a lot of additional data, points, values etc.')
     my_parser.add_argument('-c', action='store_true', default=False, dest='csv',
                            help='save numpy results also as CSV file')
 
