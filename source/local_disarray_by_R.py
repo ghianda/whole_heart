@@ -47,7 +47,7 @@ def extract_parameters(filename, param_names, _verb = False):
     return parameters
 
 
-def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=False):
+def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=False):
     # give R and:
     # - according with the space resolution defined in 'parameters'
     # - using only the eigenvectors with index 'ev_index'
@@ -81,9 +81,9 @@ def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=Fal
             block_side * res_xy, num_of_slices_P * res_z))
 
     # extract disarray space resolution from parameters
-    Ng_z = parameters['local_disarray_z_side'] if parameters['local_disarray_z_side'] > 2 else 2
+    Ng_z = parameters['local_disarray_z_side']
     Ng_xy = parameters['local_disarray_xy_side']
-    neighbours_lim = parameters['neighbours_lim'] if parameters['neighbours_lim'] > 3 else 3
+    neighbours_lim = parameters['neighbours_lim']
 
     # check if disarray space resolution on image plane is valid
     if Ng_xy == 0:
@@ -133,7 +133,7 @@ def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=Fal
                     print(grane.shape)
 
                 # N = Gy*Gx*Gz = n' of orientation blocks
-                # (N, 3, 3)
+                # (gx, gy, gz) --> (N,)
                 grane_reshaped = np.reshape(grane, np.prod(grane.shape))
                 if _verb_deep:
                     print(' 1 - grane_reshaped -> ', end='')
@@ -147,7 +147,7 @@ def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=Fal
 
                 if n_valid_cells > parameters['neighbours_lim']:
 
-                    # (N) -> (N x 3) (select eigenvector with index 'ev_index' from all the cells)
+                    # (N) -> (N x 3) (select eigenvector with index 'ev_index' from all the N cells)
                     coord = grane_reshaped['ev'][:, :, ev_index]
                     if _verb_deep:
                         print(' 2 - coord --> ', coord.shape)
@@ -156,40 +156,49 @@ def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=Fal
                     # extract fractional anisotropy (N)
                     fa = grane_reshaped['fa']
 
-                    # for print components, lin.norm and FA of every versors
+                    # for print components, lin.norm and FA of every versors (iv = index_of_versor)
                     if _verb_deep:
                         for iv in range(coord.shape[0]):
                             print(iv, ':', coord[iv, :],
-                                  ' --> norm:', np.linalg.norm(coord[c, :]),
+                                  ' --> norm:', np.linalg.norm(coord[iv, :]),
                                   ' --> FA: ', fa[iv])
 
                     # select only versors and FAs from valid cells:
                     valid_coords = coord[grane_reshaped['cell_info']]
-                    fa = fa[grane_reshaped['cell_info']]
+                    valid_fa = fa[grane_reshaped['cell_info']]
                     if _verb_deep:
                         print(' valid coords - ', valid_coords.shape, ' :')
                         print(valid_coords)
-                        print(' valid FAs - ', fa.shape, ' :')
-                        print(fa)
+                        print(' valid FAs - ', valid_fa.shape, ' :')
+                        print(valid_fa)
 
                     # order the valid versors by their FA (descending)
                     # [use '-fa' for obtain descending order]
-                    ord_coords = coord[np.argsort(-fa)]
-                    ord_fa = fa[np.argsort(-fa)]
+                    ord_coords = valid_coords[np.argsort(-valid_fa)]
+                    ord_fa = valid_fa[np.argsort(-valid_fa)]
 
                     # take the first versor (biggest FA) to
                     # move all other versors in the same half-space
-                    v1 = valid_coords[0, :]
+                    v1 = ord_coords[0, :]
 
-                    # move all the vectors in the same direction
+                    # move all other versors in the same direction
                     # (by checking the positive or negative result of dot product between
                     # the first versor and the others)
-                    for i in range(ord_coords.shape[0]):
-                        scalar = np.dot(v1, ord_coords[i])
+                    if _verb_deep: print('Check if versors have congruent direction (same half-space)')
+                    for iv in range(1, ord_coords.shape[0]):
+                        scalar = np.dot(v1, ord_coords[iv])
                         if scalar < 0:
                             # change the direction of i-th versor
-                            if _verb_deep: print(ord_coords[i], ' --->>', -ord_coords[i])
-                            ord_coords[i] = -ord_coords[i]
+                            if _verb_deep: print(ord_coords[iv], ' --->>', -ord_coords[iv])
+                            ord_coords[iv] = -ord_coords[iv]
+
+                    # for print definitive components, lin.norm and FA of every versors
+                    if _verb_deep:
+                        print('Definitive versors component in the same half-space:')
+                        for iv in range(ord_coords.shape[0]):
+                            print(iv, ':', ord_coords[iv, :],
+                                  ' --> norm:', np.linalg.norm(ord_coords[iv, :]),
+                                  ' --> FA: ', ord_fa[iv])
 
                     if _verb_deep:
                         print('np.average(ord_coords): \n', np.average(ord_coords, axis=0))
@@ -209,21 +218,21 @@ def estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=Fal
                     local_disarray = dict()
                     local_disarray[Mode.ARITH] = 100 * (1 - alignment[Mode.ARITH])
                     local_disarray[Mode.WEIGHT] = 100 * (1 - alignment[Mode.WEIGHT])
-                    if _verb_deep:
-                        print('local_disarray[Mode.ARITH] : ', local_disarray[Mode.ARITH])
-                        print('local_disarray[Mode.WEIGHT]: ', local_disarray[Mode.WEIGHT])
 
                     # save the weighted version in each block of this portion (grane)
                     # # for future statistics and plot
                     R[tuple(slice_coord)]['local_disarray'] = local_disarray[Mode.WEIGHT]
 
-                    if _verb_deep:
-                        print('saving.. rcz ({},{},{})'.format(r, c, z))
-
-                    # save results into matrix of local disarray
+                    # estimate average Fractional Anisotropy
+                    # and save results into matrix of local disarray
+                    matrix_of_local_fa[r, c, z] = np.mean(ord_fa)
                     matrices_of_disarray[Mode.ARITH][r, c, z] = local_disarray[Mode.ARITH]
                     matrices_of_disarray[Mode.WEIGHT][r, c, z] = local_disarray[Mode.WEIGHT]
-                    matrix_of_local_fa[r, c, z] = np.mean(ord_fa)
+                    if _verb_deep:
+                        print('saving.. rcz:({},{},{}):'.format(r, c, z))
+                        print('local_disarray[Mode.ARITH] : ', local_disarray[Mode.ARITH])
+                        print('local_disarray[Mode.WEIGHT]: ', local_disarray[Mode.WEIGHT])
+                        print('mean Fractional Anisotropy : ', matrix_of_local_fa[r, c, z])
 
                 else:
                     R[slice_coord]['local_disarray'] = -1.  # assumption that isolated quiver have no disarray
@@ -259,6 +268,10 @@ def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
 
     if _verb:
         print(Bcolors.V)
+        if weights is not None:
+            print('* Statistic estimation with weighted average')
+        else:
+            print('* Statistic estimation with arithmetic average')
 
     if _verb:
         print('matrix.shape: ', matrix.shape)
@@ -267,8 +280,11 @@ def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
     stat = dict()
 
     # extract valid values (it becomes 1-axis vector)
-    valid_values = matrix[matrix != -1]
+    # TODO -> FAKE ! QUI LA fa MI ARRIVA 0.0 SE IL BLOCCO ERA SENZA INFO! NON -1!  <<-------- - - - -    PAY ATTENTION
+    valid_values = matrix[matrix != 0]
+
     if weights is not None:
+        # todo IDEM, SELEZIONARE PER BENE SOLO LE CELLE VALIDE (O GLI PASSO SOLO QUELLE??) pensarci !!! <<-------- - - - - -  - - - - -  -  -  -  -  -  -  -  -  PAY ATTENTION
         weights = np.ndarray.flatten(weights)  # to fit valid_values shape
     if _verb:
         print('valid values extracted')
@@ -360,7 +376,7 @@ def main(parser):
     parameters = extract_parameters(parameter_filepath, param_names, _verb=True)
 
     # estimate disarray
-    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarry(R, parameters, ev_index=2, _verb=True, _verb_deep=False)
+    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=False)
 
     # save numpy file of both disarrays matrix (caculated with arithmetic and weighted average)
     # estraggo lista degli attributi della classe Mode
@@ -384,8 +400,7 @@ def main(parser):
           '\n >', fa_numpy_filename)
 
     # evaluated statistics for both disarray (arithm and weighted)
-    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH],
-                                                             weights=matrix_of_local_fa)
+    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH])
     disarray_WEIGHT_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.WEIGHT],
                                                               weights=matrix_of_local_fa)
     fa_stats = statistic_strings_of_valid_values(matrix_of_local_fa)

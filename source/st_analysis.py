@@ -52,7 +52,7 @@ from scipy import ndimage as ndi
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     all_words_in_txt, search_value_in_txt, pad_dimension, write_on_txt
 from custom_image_base_tool import normalize, print_info
-from local_disarray_by_R import estimate_local_disarry, save_in_numpy_file, compile_results_strings, \
+from local_disarray_by_R import estimate_local_disarray, save_in_numpy_file, compile_results_strings, \
     statistic_strings_of_valid_values
 
 
@@ -390,11 +390,24 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
 # =================================================== MAIN () ================================================
 def main(parser):
 
-    args = parser.parse_args()
+    # INPUT HARDCODED FOR DEBUG ==================================================================================
+    print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
+    source_path = '/home/francesco/LENS/ST_analysis_tests/test_artificial_stack_3.0/art.tif'
+    parameter_filename = 'parameters_vessels.txt'
+    _verbose = True
+    _deep_verbose = True
+    _save_csv = False
+    # ============================================================================================================
 
-    # Extract input information
-    source_path = manage_path_argument(args.source_path)
-    parameter_filename = args.parameters_filename[0]
+
+    ## Extract input information FROM TERMINAL =========
+    # args = parser.parse_args()
+    # source_path = manage_path_argument(args.source_path)
+    # parameter_filename = args.parameters_filename[0]
+    # _verbose = args.verbose
+    # _deep_verbose = args.deep_verbose
+    # _save_csv = args.csv
+    ## =================================================
 
     # extract filenames and folders
     stack_name = os.path.basename(source_path)
@@ -403,10 +416,7 @@ def main(parser):
     parameter_filepath = os.path.join(base_path, process_folder, parameter_filename)
     stack_prefix = stack_name.split('.')[0]
 
-    # extract other preferences
-    _verbose = args.verbose
-    _deep_verbose = args.deep_verbose
-    _save_csv = args.csv
+
 
     # create sointroductiveme informations
     mess_strings = list()
@@ -549,7 +559,7 @@ def main(parser):
     np.save(R_filepath, R)
     mess_strings.append('\n > R matrix saved in: {}'.format(os.path.dirname(source_path)))
     mess_strings.append(' > with name: {}'.format(R_filename))
-    mess_strings.append('\n > Results .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
+    mess_strings.append('\n > Informations .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
     mess_strings.append(' > with name: {}'.format(txt_info_filename))
 
     # print and write into .txt
@@ -559,7 +569,7 @@ def main(parser):
     # Disarray and Fractional Anisotropy estimation
 
     # the function estimate local disarrays and fractional anisotropy and write these values also inside R
-    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarry(R, parameters,
+    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
                                                                                    ev_index=2,
                                                                                    _verb=_verbose,
                                                                                    _verb_deep=_deep_verbose)
@@ -592,10 +602,10 @@ def main(parser):
     mess_strings.append('\n')
 
     # estimate statistics (avg, std, max, min) of both disarray (arithm and weighted) and fa
-    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH],
-                                                             weights=matrix_of_local_fa)
+    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH])
     disarray_WEIGHT_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.WEIGHT],
                                                               weights=matrix_of_local_fa)
+
     fa_stats = statistic_strings_of_valid_values(matrix_of_local_fa)
 
     # compile and append disarray results strings
@@ -629,18 +639,24 @@ def main(parser):
 
 
 if __name__ == '__main__':
-    my_parser = argparse.ArgumentParser(description='Orientation analysis - 3D Structure Tensor based')
 
-    my_parser.add_argument('-s', '--source-path', nargs='+',
-                           help='absolut path of sample to analyze (3d tiff file or folder of tiff files) ',
-                           required=True)
-    my_parser.add_argument('-p', '--parameters-filename', nargs='+',
-                           help='filename of parameters.txt file (in the same folder of stack)', required=True)
-    my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
-                           help='print additional informations')
-    my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
-                           help='[debug mode] - print a lot of additional data, points, values etc.')
-    my_parser.add_argument('-c', action='store_true', default=False, dest='csv',
-                           help='save numpy results also as CSV file')
+    # ============================================== START  BY TERMINAL ======================================
+    # my_parser = argparse.ArgumentParser(description='Orientation analysis - 3D Structure Tensor based')
+    # my_parser.add_argument('-s', '--source-path', nargs='+',
+    #                        help='absolut path of sample to analyze (3d tiff file or folder of tiff files) ',
+    #                        required=True)
+    # my_parser.add_argument('-p', '--parameters-filename', nargs='+',
+    #                        help='filename of parameters.txt file (in the same folder of stack)', required=True)
+    # my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
+    #                        help='print additional informations')
+    # my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
+    #                        help='[debug mode] - print a lot of additional data, points, values etc.')
+    # my_parser.add_argument('-c', action='store_true', default=False, dest='csv',
+    #                        help='save numpy results also as CSV file')
+    # main(my_parser)
+    # ============================================== START  BY TERMINAL ======================================
 
-    main(my_parser)
+    # ========= START FOR DEBUG =========
+    my_parser = argparse.ArgumentParser()
+    main(my_parser)  # empty
+    # ========= START FOR DEBUG =========
