@@ -9,6 +9,8 @@ import numpy as np
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, all_words_in_txt, search_value_in_txt
 
 
+
+
 class Mode:
     # to select which type of local disarray is:
     # estimated with arithmetic average
@@ -19,6 +21,7 @@ class Mode:
 
 
 class Bcolors:
+    # to color different strings in the output0
     V = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -141,7 +144,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
 
                 n_valid_cells = np.count_nonzero(grane_reshaped['cell_info'])
                 if _verb_deep:
-                    print('valid_cells --> ', n_valid_cells)
+                    print(' valid_cells --> ', n_valid_cells)
                     print(' valid rows: -> ', grane_reshaped['cell_info'])
                     print(' grane_reshaped[\'cell_info\'].shape:', grane_reshaped['cell_info'].shape)
 
@@ -208,8 +211,8 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     # alignment degree: module of the average vector.
                     # The averages estimated are both arithmetical and weighted with the FA
                     alignment = dict()
-                    alignment[Mode.ARITH] = np.linalg.norm(np.average(ord_coords, axis=0, weights=ord_fa))
-                    alignment[Mode.WEIGHT] = np.linalg.norm(np.average(ord_coords, axis=0))
+                    alignment[Mode.ARITH] = np.linalg.norm(np.average(ord_coords, axis=0))
+                    alignment[Mode.WEIGHT] = np.linalg.norm(np.average(ord_coords, axis=0, weights=ord_fa))
                     if _verb_deep:
                         print('alignment[Mode.ARITH] : ', alignment[Mode.ARITH])
                         print('alignment[Mode.WEIGHT]: ', alignment[Mode.WEIGHT])
@@ -261,60 +264,62 @@ def save_in_numpy_file(matrix_of_disarrays, R_prefix, shape_G, parameters,
     return disarray_numpy_filename
 
 
-def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
+# # TODO DA RIMUOVERE E SOSTITUIRE CON STATISTICS
+# def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
+#
+#     # TODO HARDCODED
+#     _verb = True
+#
+#     if _verb:
+#         print(Bcolors.V)
+#         if weights is not None:
+#             print('* Statistic estimation with weighted average')
+#         else:
+#             print('* Statistic estimation with arithmetic average')
+#
+#     if _verb:
+#         print('matrix.shape: ', matrix.shape)
+#         if weights is not None: print('weights.shape: ', weights.shape)
+#
+#     stat = dict()
+#
+#     # extract valid values (it becomes 1-axis vector)
+#     # TODO -> FAKE ! QUI LA fa MI ARRIVA 0.0 SE IL BLOCCO ERA SENZA INFO! NON -1!  <<-------- - - - -    PAY ATTENTION
+#     valid_values = matrix[matrix != 0]
+#
+#     if weights is not None:
+#         # todo IDEM, SELEZIONARE PER BENE SOLO LE CELLE VALIDE (O GLI PASSO SOLO QUELLE??) pensarci !!! <<-------- - - - - -  - - - - -  -  -  -  -  -  -  -  -  PAY ATTENTION
+#         weights = np.ndarray.flatten(weights)  # to fit valid_values shape
+#     if _verb:
+#         print('valid values extracted')
+#
+#     if _verb:
+#         print('valid_values.shape: ', valid_values.shape)
+#         if weights is not None: print('weights.shape: ', weights.shape)
+#
+#     # collect shape, min and max
+#     stat['n_valid_values'] = valid_values.shape[0]
+#     stat['min'] = valid_values.min()
+#     stat['max'] = valid_values.max()
+#
+#     # collect avg and std
+#     if weights is not None:
+#         stat['avg'] = np.average(valid_values,
+#                                  axis=0,
+#                                  weights=weights)
+#         stat['std'] = np.sqrt(np.average((valid_values - stat['avg']) ** 2,
+#                                          axis=0,
+#                                          weights=weights))
+#     else:
+#         stat['avg'] = np.average(valid_values)
+#         stat['std'] = np.std(valid_values)
+#
+#     if _verb:
+#         print('avg:, ', stat['avg'])
+#         print('std:, ', stat['std'])
+#         print(Bcolors.ENDC)
+#     return stat
 
-    # TODO HARDCODED
-    _verb = True
-
-    if _verb:
-        print(Bcolors.V)
-        if weights is not None:
-            print('* Statistic estimation with weighted average')
-        else:
-            print('* Statistic estimation with arithmetic average')
-
-    if _verb:
-        print('matrix.shape: ', matrix.shape)
-        if weights is not None: print('weights.shape: ', weights.shape)
-
-    stat = dict()
-
-    # extract valid values (it becomes 1-axis vector)
-    # TODO -> FAKE ! QUI LA fa MI ARRIVA 0.0 SE IL BLOCCO ERA SENZA INFO! NON -1!  <<-------- - - - -    PAY ATTENTION
-    valid_values = matrix[matrix != 0]
-
-    if weights is not None:
-        # todo IDEM, SELEZIONARE PER BENE SOLO LE CELLE VALIDE (O GLI PASSO SOLO QUELLE??) pensarci !!! <<-------- - - - - -  - - - - -  -  -  -  -  -  -  -  -  PAY ATTENTION
-        weights = np.ndarray.flatten(weights)  # to fit valid_values shape
-    if _verb:
-        print('valid values extracted')
-
-    if _verb:
-        print('valid_values.shape: ', valid_values.shape)
-        if weights is not None: print('weights.shape: ', weights.shape)
-
-    # collect shape, min and max
-    stat['n_valid_values'] = valid_values.shape[0]
-    stat['min'] = valid_values.min()
-    stat['max'] = valid_values.max()
-
-    # collect avg and std
-    if weights is not None:
-        stat['avg'] = np.average(valid_values,
-                                 axis=0,
-                                 weights=weights)
-        stat['std'] = np.sqrt(np.average((valid_values - stat['avg']) ** 2,
-                                         axis=0,
-                                         weights=weights))
-    else:
-        stat['avg'] = np.average(valid_values)
-        stat['std'] = np.std(valid_values)
-
-    if _verb:
-        print('avg:, ', stat['avg'])
-        print('std:, ', stat['std'])
-        print(Bcolors.ENDC)
-    return stat
 
 
 def compile_results_strings(matrix, disarray_stats, fa_stats, mode='none_passed'):

@@ -35,12 +35,12 @@ print(ew[2], ' --> ', ev_rotated[:, 2])
 # system
 import os
 import time
-import sys
 import argparse
 
 # general
 import numpy as np
 from numpy import linalg as LA
+from scipy import stats as scipy_stats
 from zetastitcher import InputFile
 
 # image
@@ -52,8 +52,35 @@ from scipy import ndimage as ndi
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     all_words_in_txt, search_value_in_txt, pad_dimension, write_on_txt
 from custom_image_base_tool import normalize, print_info
-from local_disarray_by_R import estimate_local_disarray, save_in_numpy_file, compile_results_strings, \
-    statistic_strings_of_valid_values
+from local_disarray_by_R import estimate_local_disarray, save_in_numpy_file, compile_results_strings
+
+
+class Param:
+    ID_BLOCK = 'id_block'  # unique identifier of block
+    CELL_INFO = 'cell_info'  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+    ORIENT_INFO = 'orient_info'  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+    CELL_RATIO = 'cell_ratio'  # ratio between cell voxel and all voxel of block
+    INIT_COORD = 'init_coord'   # absolute coord of voxel block[0,0,0] in Volume
+    EW  = 'ew'   # descending ordered eigenvalues.
+    EV = 'ev'   # column ev[:,i] is the eigenvector of the eigenvalue w[i].
+    STRENGHT = 'strenght'   # parametro forza del gradiente (w1 .=. w2 .=. w3)
+    CILINDRICAL_DIM = 'cilindrical_dim'  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
+    PLANAR_DIM = 'planar_dim'  # dimensionalità forma planare (w1 >> w2 .=. w3)
+    FA  = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+    LOCAL_DISARRAY = 'local_disarray'   # local_disarray
+    LOCAL_DISARRAY_W = 'local_disarray_w'  # local_disarray using FA as weight for the versors
+
+
+class Stat:
+    # statistics
+    N_VALID_VALUES = 'n_valid_values'
+    MIN = 'min'
+    MAX = 'max'
+    AVG = 'avg'  # statistics mean
+    STD = 'std'
+    MEDIAN = 'median'  # statistics median
+    MODE = 'mode'  # statistics mode
+    MODALITY = 'modality'  # for arithmetic or weighted
 
 
 class Bcolors:
@@ -81,6 +108,172 @@ class Cell_Ratio_mode:
     MEAN = 1.0
 
 
+def stats_with_grane_on_R(R, param, grane_dim=(1, 1, 1), invalid_value=None, invalid_par=None, _verb=False):
+    """
+    Evaluate statistics on the selected param in R. If grane is passed, return a matrix of local statistics.
+
+    :param R: output matrix of Orientation analysis
+    :param param: parameters of R selected
+    :param grane_dim: shape of granes where evaluate local statistics
+    :param invalid_value: the value that indicate an invalid elements; it's used to create the valid_mask
+    :param invalid_par: if passed, invalid_mask is created using invalid_value on R[invalid_par] instead on R[param]
+    :param _verb: True if verbose
+    :return: matrices_of_results = local statistics of the selected param
+    """
+    # iterations long each axis of R
+    iterations = tuple(np.ceil(np.array(R.shape) / np.array(grane_dim)).astype(np.uint32))
+
+    # define matrix containing local results
+    matrices_of_stats = create_stats_matrix(iterations)
+
+    for z in range(iterations[2]):
+        for r in range(iterations[0]):
+            for c in range(iterations[1]):
+
+                # grane extraction from R
+                start_coord = create_coord_by_iter(r, c, z, grane_dim)
+                slice_coord = create_slice_coordinate(start_coord, grane_dim)
+
+                # extract a sub-volume called 'grane' with size 'grane_dim'
+                grane = R[tuple(slice_coord)]
+
+                # extract values of selected parameter
+                values = grane[param]
+
+                # # create mask of valid values (True if valid, False if invalid)
+                # if invalid_value is not None:
+                #     if invalid_par is not None:
+                #         valid_mask = grane[invalid_par] != invalid_value
+                #     else:
+                #         valid_mask = values != invalid_value
+
+                # estimate statistics on selected values
+                stats = statistics_base(values, w=None, valid_mask=valid_mask, _verb=_verb)
+
+                # and save statistics results
+                for key in stats.keys():
+                    matrices_of_stats[r, c, z][key] = stats[key]
+
+    return matrices_of_stats
+
+
+def statistics_on_structured_data(input, param, w, invalid_value=None, invalid_par=None, _verb=False):
+    """
+    :param input: matrix with a structure like R
+    :param param: parameter selected
+    :param w: weights
+    :param invalid_value: the value that indicate an invalid elements; it's used to create the valid_mask
+    :param invalid_par: if passed, invalid_mask is created using invalid_value on R[invalid_par] instead on R[param]
+    :param _verb:
+    :return: structure with statistic results
+    """
+
+    if input is not None and param is not None:
+
+        # create mask of valid values (True if valid, False if invalid)
+        if invalid_value is not None:
+            if invalid_par is not None:
+                valid_mask = input[invalid_par] != invalid_value
+            else:
+                valid_mask = input[param] != invalid_value
+
+        # estimate statistics on selected values
+        stats = statistics_base(input[param], w=w, valid_mask=valid_mask, _verb=_verb)
+        return stats
+    else:
+        return None
+
+
+def statistics_base(x, w=None, valid_mask=None, _verb=False):
+    """
+    Evaluate statistics (see class Stat) from values ​​in M, using weights if passed.
+    INPUT
+    - x is a numpy ndarray.
+    - w is a numpy ndarray (same dimension of m) with the weights of m values
+    - valid_values = ndarray of bool, same shapes of x. if passed, indicates which values use to evaluate the results
+    - _verb is boolean, if True the function prints debugging informaztions
+    OUTPUT
+    - stat: a dictionary containing the results
+    """
+    # todo: usare numpy mask? <-- se il fatto che comprimo le dimensioni romperà le scatole
+
+    if x is not None:
+        if w is not None:
+            _w = True
+            if _verb:
+                print(Bcolors.V)
+                print('* Statistic estimation with weighted average')
+        else:
+            w = np.ones_like(x)  # all weights are set as 1 like in an arithmetic average
+            _w = False
+            if _verb:
+                print('* Statistic estimation with arithmetic average')
+
+        if _verb:
+            print('matrix.shape: ', x.shape)
+            if _w:
+                print('weights.shape: ', w.shape)
+
+        # define dictionary of the results
+        results = dict()
+
+        # if invalid_value is passed, only valid values are extracted
+        # else, all the values are selected
+        if valid_mask is None:
+            valid_mask = np.ones_like(x).astype(np.bool)
+
+        valid_values = x[valid_mask]  # 1-axis vector
+        valid_weights = w[valid_mask]  # 1-axis vector
+
+        if _verb:
+            print('Number of values selected: {}'.format(valid_values.shape))
+
+        # collect number of values, min and max
+        results[Stat.N_VALID_VALUES] = valid_values.shape[0] # is a tuple
+        results[Stat.MIN] = valid_values.min()
+        results[Stat.MAX] = valid_values.max()
+
+        # collect mean and std, mode and median
+        results[Stat.AVG] = np.average(valid_values, axis=0, weights=valid_weights)
+        results[Stat.STD] = np.sqrt(
+            np.average((valid_values - results[Stat.AVG]) ** 2, axis=0, weights=valid_weights))
+        results[Stat.MEDIAN] = np.median(valid_values)
+        results[Stat.MODE] = scipy_stats.mode(valid_values)
+
+        # save modality of averaging
+        results[Stat.MODALITY] = Mode.ARITH if w is None else Mode.WEIGHT
+
+        if _verb:
+            print('Modality:, ', results[Stat.MODALITY])
+            print(' - avg:, ', results[Stat.AVG])
+            print(' - std:, ', results[Stat.STD])
+            print(Bcolors.ENDC)
+        return results
+
+    else:
+        if _verb:
+            print('ERROR: ' + statistics_base.__main__ + ' - Matrix passed is None')
+        return None
+
+
+def create_stats_matrix(shape):
+    """
+    Define a Matrix with the same structure of R parameters'
+    """
+    matrix = np.zeros(
+        np.prod(shape),
+        dtype=[(Stat.N_VALID_VALUES, np.int32),
+               (Stat.MIN, np.float16),
+               (Stat.MAX, np.float16),
+               (Stat.AVG, np.float16),
+               (Stat.STD, np.float16),
+               (Stat.MODE, np.float16),
+               (Stat.MODALITY, np.float16),
+               ]
+    ).reshape(shape)
+    return matrix
+
+
 def create_R(shape_V, shape_P):
     '''
     Define Results Matrix - 'R'
@@ -98,25 +291,25 @@ def create_R(shape_V, shape_P):
         total_num_of_cells = np.prod(shape_R)
         R = np.zeros(
             total_num_of_cells,
-            dtype=[('id_block', np.int64),  # unique identifier of block
-                   ('cell_info', bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
-                   ('orient_info', bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
-                   ('cell_ratio', np.float16),  # ratio between cell voxel and all voxel of block
-                   ('init_coord', np.int32, (1, 3)),  # absolute coord of voxel block[0,0,0] in Volume
-                   ('ew', np.float32, (1, 3)),  # descending ordered eigenvalues.
-                   ('ev', np.float32, (3, 3)),  # column ev[:,i] is the eigenvector of the eigenvalue w[i].
-                   ('strenght', np.float16),  # parametro forza del gradiente (w1 .=. w2 .=. w3)
-                   ('cilindrical_dim', np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
-                   ('planar_dim', np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
-                   ('fa', np.float16), # fractional anisotropy (0-> isotropic, 1-> max anisotropy
-                   ('local_disarray', np.float16),  # where will store local_disarray
-                   ('local_disarray_w', np.float16)  # where will store local_disarray using FA as weight for the versors
+            dtype=[(Param.ID_BLOCK, np.int64),  # unique identifier of block
+                   (Param.CELL_INFO, bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+                   (Param.ORIENT_INFO, bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+                   (Param.CELL_RATIO, np.float16),  # ratio between cell voxel and all voxel of block
+                   (Param.INIT_COORD, np.int32, (1, 3)),  # absolute coord of voxel block[0,0,0] in Volume
+                   (Param.EW, np.float32, (1, 3)),  # descending ordered eigenvalues.
+                   (Param.EV, np.float32, (3, 3)),  # column ev[:,i] is the eigenvector of the eigenvalue w[i].
+                   (Param.STRENGHT, np.float16),  # parametro forza del gradiente (w1 .=. w2 .=. w3)
+                   (Param.CILINDRICAL_DIM, np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
+                   (Param.PLANAR_DIM, np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
+                   (Param.FA, np.float16),  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+                   (Param.LOCAL_DISARRAY, np.float16),  # local_disarray
+                   (Param.LOCAL_DISARRAY_W, np.float16)  # local_disarray using FA as weight for the versors
                    ]
         ).reshape(shape_R)
 
         # initialize mask of info to False
-        R[:, :, :]['cell_info'] = False
-        R[:, :, :]['orient_info'] = False
+        R[:, :, :][Param.CELL_INFO] = False
+        R[:, :, :][Param.ORIENT_INFO] = False
 
         print('Dimension of Result Matrix:', R.shape)
         return R, shape_R
@@ -349,7 +542,7 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
 
                 # save init info in R
                 R[r, c, z]['id_block'] = count
-                R[r, c, z]['init_coord'] = start_coord
+                R[r, c, z][Param.INIT_COORD] = start_coord
 
                 # extract parallelepiped
                 parall = volume[tuple(slice_coord)]
@@ -392,7 +585,7 @@ def main(parser):
 
     # INPUT HARDCODED FOR DEBUG ==================================================================================
     print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
-    source_path = '/home/francesco/LENS/ST_analysis_tests/test_artificial_stack_3.0/art.tif'
+    source_path = '/home/francesco/LENS/ST_analysis_tests/test_artificial_stack_3.1/art.tif'
     parameter_filename = 'parameters_vessels.txt'
     _verbose = True
     _deep_verbose = True
@@ -429,7 +622,6 @@ def main(parser):
     mess_strings.append(' > Parameter filepath: {}'.format(parameter_filepath))
     mess_strings.append('')
 
-    # (TODO) here added local_disarray_z_side and local_disarray_xy_side
     # extract parameters
     param_names = ['roi_xy_pix',
                    'px_size_xy', 'px_size_z',
@@ -521,8 +713,8 @@ def main(parser):
     R, count = iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose)
 
     # extract informations about the data analyzed
-    block_with_cell = np.count_nonzero(R['cell_info'])
-    block_with_info = np.count_nonzero(R['orient_info'])
+    block_with_cell = np.count_nonzero(R[Param.CELL_INFO])
+    block_with_info = np.count_nonzero(R[Param.ORIENT_INFO])
     p_rejec_cell = 100 * (1 - (block_with_cell / count))
     p_rejec_info_tot = 100 * (1 - (block_with_info / count))
     p_rejec_info = 100 * (1 - (block_with_info / block_with_cell))
@@ -580,7 +772,7 @@ def main(parser):
     # save numpy file of both disarrays matrix (calculated with arithmetic and weighted average)
     # and get their filenames
     # [estraggo lista degli attributi della classe Mode
-    # e scarto quelli che cominciao con '_' perchè saranno moduli]
+    # e scarto quelli che cominciano con '_' perchè saranno moduli]
     disarray_numpy_filename = dict()
     for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
         disarray_numpy_filename[getattr(Mode, mode)] = save_in_numpy_file(
@@ -601,12 +793,10 @@ def main(parser):
                                                                 fa_numpy_filename))
     mess_strings.append('\n')
 
-    # estimate statistics (avg, std, max, min) of both disarray (arithm and weighted) and fa
-    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH])
-    disarray_WEIGHT_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.WEIGHT],
-                                                              weights=matrix_of_local_fa)
-
-    fa_stats = statistic_strings_of_valid_values(matrix_of_local_fa)
+    # estimate statistics (see class Stat) of both disarray (arithm and weighted) and of fa
+    disarray_ARITM_stats = statistics_base(matrices_of_disarrays[Mode.ARITH])
+    disarray_WEIGHT_stats = statistics_base(matrices_of_disarrays[Mode.WEIGHT], w=matrix_of_local_fa)
+    fa_stats = statistics_base(matrix_of_local_fa)
 
     # compile and append disarray results strings
     s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], disarray_ARITM_stats, fa_stats)
