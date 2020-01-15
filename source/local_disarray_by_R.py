@@ -9,6 +9,32 @@ import numpy as np
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, all_words_in_txt, search_value_in_txt
 
 
+class Param:
+    ID_BLOCK = 'id_block'  # unique identifier of block
+    CELL_INFO = 'cell_info'  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+    ORIENT_INFO = 'orient_info'  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+    CELL_RATIO = 'cell_ratio'  # ratio between cell voxel and all voxel of block
+    INIT_COORD = 'init_coord'   # absolute coord of voxel block[0,0,0] in Volume
+    EW = 'ew'   # descending ordered eigenvalues.
+    EV = 'ev'   # column ev[:,i] is the eigenvector of the eigenvalue w[i].
+    STRENGHT = 'strenght'   # parametro forza del gradiente (w1 .=. w2 .=. w3)
+    CILINDRICAL_DIM = 'cilindrical_dim'  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
+    PLANAR_DIM = 'planar_dim'  # dimensionalità forma planare (w1 >> w2 .=. w3)
+    FA = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+    LOCAL_DISARRAY = 'local_disarray'   # local_disarray
+    LOCAL_DISARRAY_W = 'local_disarray_w'  # local_disarray using FA as weight for the versors
+
+
+class Stat:
+    # statistics
+    N_VALID_VALUES = 'n_valid_values'
+    MIN = 'min'
+    MAX = 'max'
+    AVG = 'avg'  # statistics mean
+    STD = 'std'
+    MEDIAN = 'median'  # statistics median
+    MODE = 'mode'  # statistics mode
+    MODALITY = 'modality'  # for arithmetic or weighted
 
 
 class Mode:
@@ -105,7 +131,9 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
 
     # iteration long each axis
     iterations = tuple(np.ceil(np.array(R.shape) / np.array(shape_G)).astype(np.uint32))
-    if _verb: print('\n\n> Expected iterations: ', iterations)
+    if _verb:
+        print('\n\n> Expected iterations on each axis: ', iterations)
+        print('\n\n> Expected total iterations       : ', np.prod(iterations))
 
     # define global matrix that contains local disarrays and local FA
     # - local disarray is the disarray of the selected cluster of orientation versors
@@ -121,7 +149,9 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
     for z in range(iterations[2]):
         for r in range(iterations[0]):
             for c in range(iterations[1]):
-                if _verb_deep: print('\n\n\n\n')
+                if _verb_deep:
+                    print(' *** DEBUGGING MODE ACTIVATED ***')
+                    print('\n\n\n\n')
 
                 print(Bcolors.WARNING +
                       'iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c) +
@@ -129,8 +159,8 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
 
                 # grane extraction from R
                 start_coord = create_coord_by_iter(r, c, z, shape_G)
-                slice_coord = create_slice_coordinate(start_coord, shape_G)
-                grane = R[tuple(slice_coord)]  # extract a sub-volume called 'grane' with size (Gy, Gx, Gz)
+                slice_coord = tuple(create_slice_coordinate(start_coord, shape_G))
+                grane = R[slice_coord]  # extract a sub-volume called 'grane' with size (Gy, Gx, Gz)
                 if _verb_deep:
                     print(' 0 - grane -> ', end='')
                     print(grane.shape)
@@ -142,22 +172,22 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     print(' 1 - grane_reshaped -> ', end='')
                     print(grane_reshaped.shape)
 
-                n_valid_cells = np.count_nonzero(grane_reshaped['cell_info'])
+                n_valid_cells = np.count_nonzero(grane_reshaped[Param.CELL_INFO])
                 if _verb_deep:
                     print(' valid_cells --> ', n_valid_cells)
-                    print(' valid rows: -> ', grane_reshaped['cell_info'])
-                    print(' grane_reshaped[\'cell_info\'].shape:', grane_reshaped['cell_info'].shape)
+                    print(' valid rows: -> ', grane_reshaped[Param.CELL_INFO])
+                    print(' grane_reshaped[\'cell_info\'].shape:', grane_reshaped[Param.CELL_INFO].shape)
 
                 if n_valid_cells > parameters['neighbours_lim']:
 
                     # (N) -> (N x 3) (select eigenvector with index 'ev_index' from all the N cells)
-                    coord = grane_reshaped['ev'][:, :, ev_index]
+                    coord = grane_reshaped[Param.EV][:, :, ev_index]
                     if _verb_deep:
                         print(' 2 - coord --> ', coord.shape)
                         print(coord)
 
                     # extract fractional anisotropy (N)
-                    fa = grane_reshaped['fa']
+                    fa = grane_reshaped[Param.FA]
 
                     # for print components, lin.norm and FA of every versors (iv = index_of_versor)
                     if _verb_deep:
@@ -167,8 +197,8 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                                   ' --> FA: ', fa[iv])
 
                     # select only versors and FAs from valid cells:
-                    valid_coords = coord[grane_reshaped['cell_info']]
-                    valid_fa = fa[grane_reshaped['cell_info']]
+                    valid_coords = coord[grane_reshaped[Param.CELL_INFO]]
+                    valid_fa = fa[grane_reshaped[Param.CELL_INFO]]
                     if _verb_deep:
                         print(' valid coords - ', valid_coords.shape, ' :')
                         print(valid_coords)
@@ -222,9 +252,10 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     local_disarray[Mode.ARITH] = 100 * (1 - alignment[Mode.ARITH])
                     local_disarray[Mode.WEIGHT] = 100 * (1 - alignment[Mode.WEIGHT])
 
-                    # save the weighted version in each block of this portion (grane)
-                    # # for future statistics and plot
-                    R[tuple(slice_coord)]['local_disarray'] = local_disarray[Mode.WEIGHT]
+                    # save the disarray in each block of this portion (grane)
+                    # for future statistics and plot
+                    R[slice_coord][Param.LOCAL_DISARRAY] = local_disarray[Mode.ARITH]
+                    R[slice_coord][Param.LOCAL_DISARRAY_W] = local_disarray[Mode.WEIGHT]
 
                     # estimate average Fractional Anisotropy
                     # and save results into matrix of local disarray
@@ -238,17 +269,22 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                         print('mean Fractional Anisotropy : ', matrix_of_local_fa[r, c, z])
 
                 else:
-                    R[slice_coord]['local_disarray'] = -1.  # assumption that isolated quiver have no disarray
+                    # Assign invalid value (-1)
+                    # (assume that isolated quiver have no disarray)
+                    R[slice_coord][Param.LOCAL_DISARRAY] = -1
+                    R[slice_coord][Param.LOCAL_DISARRAY_W] = -1
                     matrices_of_disarray[Mode.ARITH][r, c, z] = -1
                     matrices_of_disarray[Mode.WEIGHT][r, c, z] = -1
                     matrix_of_local_fa[r, c, z] = -1
 
                 # end iteration
                 _i += 1
-                # close colored session
-                if _verb_deep: print(Bcolors.ENDC)
 
-        return matrices_of_disarray, matrix_of_local_fa, shape_G, R
+    # close colored session
+    if _verb_deep:
+        print(Bcolors.ENDC)
+
+    return matrices_of_disarray, matrix_of_local_fa, shape_G, R
 
 
 def save_in_numpy_file(matrix_of_disarrays, R_prefix, shape_G, parameters,
@@ -321,23 +357,43 @@ def save_in_numpy_file(matrix_of_disarrays, R_prefix, shape_G, parameters,
 #     return stat
 
 
+def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
+    """
 
-def compile_results_strings(matrix, disarray_stats, fa_stats, mode='none_passed'):
-    disarray_results_strings = list()
+    :param matrix: input values
+    :param name: name of the parameter of matrix
+    :param stats: statistic results on matrix
+    :param mode: aritm or weighted
+    :param ext: extension of the results (%, um, none..)
+    :return: strings: list of strings
+    """
+    strings = list()
 
-    disarray_results_strings.append('\n \n *** Results of statistical analysis of Disarray on accepted points. \n')
-    disarray_results_strings.append('> Disarray (%):= 100 * (1 - alignment)\n')
-    disarray_results_strings.append('> Alignment is evaluated with MODE = {}\n'.format(mode))
-    disarray_results_strings.append('> Matrix of disarray shape: {}'.format(matrix.shape))
-    disarray_results_strings.append('> Valid disarray values: {}'.format(disarray_stats['n_valid_values']))
-    disarray_results_strings.append('> NB - Disarray statistics are evaluated using Fractional Anisotropy as weight:')
-    disarray_results_strings.append('\n> Disarray mean: {0:0.2f}%'.format(disarray_stats['avg']))
-    disarray_results_strings.append('> Disarray std: {0:0.2f}% '.format(disarray_stats['std']))
-    disarray_results_strings.append('> Disarray (min, MAX)%: ({0:0.2f}, {1:0.2f})'.format(disarray_stats['min'],
-                                                                                          disarray_stats['max']))
-    disarray_results_strings.append('\n> Fractional Anisotropy mean: {0:0.2f}%'.format(fa_stats['avg']))
-    disarray_results_strings.append('> Fractional Anisotropy std: {0:0.2f}% '.format(fa_stats['std']))
-    return disarray_results_strings
+    strings.append('\n \n *** Results of statistical analysis of {} on accepted points. \n'.format(name))
+    strings.append('> Matrix of {} with shape: {}'.format(name, matrix.shape))
+    strings.append('> Number of valid values: {}'.format(stats[Stat.N_VALID_VALUES]))
+    strings.append('> Modality of statistical evaluation: {}\n'.format(mode))
+    strings.append('> Statistical Results:')
+
+    # generation of a string for each statistical parameters
+    for att in [att for att in vars(Stat) if str(att)[0] is not '_']:
+        # print(att)
+        # print(getattr(Stat, att))
+        # print(stats)
+        # print('{0}'.format(getattr(Stat, att)))
+        # print('{0:0.2f}'.format(stats[getattr(Stat, att)]))
+        # print('{0}'.format(ext))
+
+        # check if the parameter contains a string (ex: 'ARIITH' or 'WEIGHT')
+        if isinstance(stats[getattr(Stat, att)], str):
+            strings.append(' - {0}: {1}'.format(getattr(Stat, att), stats[getattr(Stat, att)]))
+
+        elif att == Stat.N_VALID_VALUES:
+            # print integer and without extension
+            strings.append(' - {0}: {1}'.format(getattr(Stat, att), stats[getattr(Stat, att)]))
+        else:
+            strings.append(' - {0}: {1:0.2f}{2}'.format(getattr(Stat, att), stats[getattr(Stat, att)], ext))
+    return strings
 
 
 def main(parser):

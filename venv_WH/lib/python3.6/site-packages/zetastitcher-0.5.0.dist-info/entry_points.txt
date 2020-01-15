@@ -1,0 +1,4 @@
+[console_scripts]
+stitch-align = zetastitcher.runner:main
+stitch-fuse = zetastitcher.fuser.__main__:main
+

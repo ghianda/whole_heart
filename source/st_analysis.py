@@ -61,12 +61,12 @@ class Param:
     ORIENT_INFO = 'orient_info'  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
     CELL_RATIO = 'cell_ratio'  # ratio between cell voxel and all voxel of block
     INIT_COORD = 'init_coord'   # absolute coord of voxel block[0,0,0] in Volume
-    EW  = 'ew'   # descending ordered eigenvalues.
+    EW = 'ew'   # descending ordered eigenvalues.
     EV = 'ev'   # column ev[:,i] is the eigenvector of the eigenvalue w[i].
     STRENGHT = 'strenght'   # parametro forza del gradiente (w1 .=. w2 .=. w3)
     CILINDRICAL_DIM = 'cilindrical_dim'  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
     PLANAR_DIM = 'planar_dim'  # dimensionalità forma planare (w1 >> w2 .=. w3)
-    FA  = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+    FA = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
     LOCAL_DISARRAY = 'local_disarray'   # local_disarray
     LOCAL_DISARRAY_W = 'local_disarray_w'  # local_disarray using FA as weight for the versors
 
@@ -157,7 +157,7 @@ def stats_with_grane_on_R(R, param, grane_dim=(1, 1, 1), invalid_value=None, inv
     return matrices_of_stats
 
 
-def statistics_on_structured_data(input, param, w, invalid_value=None, invalid_par=None, _verb=False):
+def stats_on_structured_data(input, param, w, invalid_value=None, invalid_par=None, _verb=False):
     """
     :param input: matrix with a structure like R
     :param param: parameter selected
@@ -184,16 +184,15 @@ def statistics_on_structured_data(input, param, w, invalid_value=None, invalid_p
         return None
 
 
-def statistics_base(x, w=None, valid_mask=None, _verb=False):
+def statistics_base(x, w=None, valid_mask=None, invalid_value=None, _verb=False):
     """
     Evaluate statistics (see class Stat) from values ​​in M, using weights if passed.
-    INPUT
-    - x is a numpy ndarray.
-    - w is a numpy ndarray (same dimension of m) with the weights of m values
-    - valid_values = ndarray of bool, same shapes of x. if passed, indicates which values use to evaluate the results
-    - _verb is boolean, if True the function prints debugging informaztions
-    OUTPUT
-    - stat: a dictionary containing the results
+    :param x: is a numpy ndarray.
+    :param w: is a numpy ndarray (same dimension of m) with the weights of m values
+    :param valid_mask: ndarray of bool, same shapes of x. if passed, indicates which values use to evaluate the results
+    :param invalid_value: if valid_mask is not passed, it is evaluated by invalid_value (for ex: -1)
+    :param _verb: boolean
+    :return: stat: a dictionary containing the results
     """
     # todo: usare numpy mask? <-- se il fatto che comprimo le dimensioni romperà le scatole
 
@@ -217,10 +216,13 @@ def statistics_base(x, w=None, valid_mask=None, _verb=False):
         # define dictionary of the results
         results = dict()
 
-        # if invalid_value is passed, only valid values are extracted
+        # if valid_mask is passed (or created by invalid_value), only valid values are extracted
         # else, all the values are selected
         if valid_mask is None:
-            valid_mask = np.ones_like(x).astype(np.bool)
+            if invalid_value is None:
+                valid_mask = np.ones_like(x).astype(np.bool)
+            else:
+                valid_mask = (x != invalid_value)  # for example, -1
 
         valid_values = x[valid_mask]  # 1-axis vector
         valid_weights = w[valid_mask]  # 1-axis vector
@@ -229,7 +231,7 @@ def statistics_base(x, w=None, valid_mask=None, _verb=False):
             print('Number of values selected: {}'.format(valid_values.shape))
 
         # collect number of values, min and max
-        results[Stat.N_VALID_VALUES] = valid_values.shape[0] # is a tuple
+        results[Stat.N_VALID_VALUES] = valid_values.shape[0]  # [0] because is a tuple
         results[Stat.MIN] = valid_values.min()
         results[Stat.MAX] = valid_values.max()
 
@@ -238,7 +240,9 @@ def statistics_base(x, w=None, valid_mask=None, _verb=False):
         results[Stat.STD] = np.sqrt(
             np.average((valid_values - results[Stat.AVG]) ** 2, axis=0, weights=valid_weights))
         results[Stat.MEDIAN] = np.median(valid_values)
-        results[Stat.MODE] = scipy_stats.mode(valid_values)
+
+        # mode return an object with 2 attributes: mode and count, both as n-array, with n the iniput axis
+        results[Stat.MODE] = scipy_stats.mode(valid_values).mode[0]
 
         # save modality of averaging
         results[Stat.MODALITY] = Mode.ARITH if w is None else Mode.WEIGHT
@@ -742,6 +746,18 @@ def main(parser):
     # clear list of strings
     mess_strings.clear()
 
+    # 3 ----------------------------------------------------------------------------------------------------
+    # Disarray and Fractional Anisotropy estimation
+
+    # the function estimate local disarrays and fractional anisotropy and write these values also inside R
+    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
+                                                                                    ev_index=2,
+                                                                                    _verb=_verbose,
+                                                                                    _verb_deep=_deep_verbose)
+
+    # 4 ----------------------------------------------------------------------------------------------------
+    # WRITE RESULTS AND SAVE
+
     # create result matrix (R) filename:
     R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
     R_prefix = R_filename.split('.')[0]
@@ -756,18 +772,6 @@ def main(parser):
 
     # print and write into .txt
     write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
-
-    # 3 ----------------------------------------------------------------------------------------------------
-    # Disarray and Fractional Anisotropy estimation
-
-    # the function estimate local disarrays and fractional anisotropy and write these values also inside R
-    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
-                                                                                   ev_index=2,
-                                                                                   _verb=_verbose,
-                                                                                   _verb_deep=_deep_verbose)
-
-    # 4 ----------------------------------------------------------------------------------------------------
-    # WRITE RESULTS AND SAVE
 
     # save numpy file of both disarrays matrix (calculated with arithmetic and weighted average)
     # and get their filenames
@@ -794,14 +798,17 @@ def main(parser):
     mess_strings.append('\n')
 
     # estimate statistics (see class Stat) of both disarray (arithm and weighted) and of fa
-    disarray_ARITM_stats = statistics_base(matrices_of_disarrays[Mode.ARITH])
-    disarray_WEIGHT_stats = statistics_base(matrices_of_disarrays[Mode.WEIGHT], w=matrix_of_local_fa)
-    fa_stats = statistics_base(matrix_of_local_fa)
+    disarray_ARITM_stats = statistics_base(matrices_of_disarrays[Mode.ARITH], invalid_value=-1)
+    disarray_WEIGHT_stats = statistics_base(matrices_of_disarrays[Mode.WEIGHT],
+                                            w=matrix_of_local_fa,
+                                            invalid_value=-1)
+    fa_stats = statistics_base(matrix_of_local_fa, invalid_value=-1)
 
-    # compile and append disarray results strings
-    s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], disarray_ARITM_stats, fa_stats)
-    s2 = compile_results_strings(matrices_of_disarrays[Mode.WEIGHT], disarray_WEIGHT_stats, fa_stats)
-    disarray_and_fa_results_strings = s1 + ['\n\n\n'] + s2
+    # compile and append statistical results strings
+    s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], 'Disarray', disarray_ARITM_stats, 'ARITH', '%')
+    s2 = compile_results_strings(matrices_of_disarrays[Mode.WEIGHT], 'Disarray', disarray_WEIGHT_stats, 'WEIGHT', '%')
+    s3 = compile_results_strings(matrix_of_local_fa, 'Fractional Anisotropy', fa_stats)
+    disarray_and_fa_results_strings = s1 + ['\n\n\n'] + s2 + ['\n\n\n'] + s3
 
     # update mess strings
     mess_strings = mess_strings + disarray_and_fa_results_strings
