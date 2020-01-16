@@ -107,7 +107,7 @@ class Cell_Ratio_mode:
     NON_ZERO_RATIO = 0.0
     MEAN = 1.0
 
-
+'''
 def stats_with_grane_on_R(R, param, grane_dim=(1, 1, 1), invalid_value=None, invalid_par=None, _verb=False):
     """
     Evaluate statistics on the selected param in R. If grane is passed, return a matrix of local statistics.
@@ -155,6 +155,7 @@ def stats_with_grane_on_R(R, param, grane_dim=(1, 1, 1), invalid_value=None, inv
                     matrices_of_stats[r, c, z][key] = stats[key]
 
     return matrices_of_stats
+'''
 
 
 def stats_on_structured_data(input, param, w, invalid_value=None, invalid_par=None, _verb=False):
@@ -589,10 +590,10 @@ def main(parser):
 
     # INPUT HARDCODED FOR DEBUG ==================================================================================
     print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
-    source_path = '/home/francesco/LENS/ST_analysis_tests/test_artificial_stack_3.1/art.tif'
+    source_path = '/home/francesco/LENS/ST_analysis_tests/test_vasi/200116_test_vasi_FA_3.1/stack.tif'
     parameter_filename = 'parameters_vessels.txt'
     _verbose = True
-    _deep_verbose = True
+    _deep_verbose = False
     _save_csv = False
     # ============================================================================================================
 
@@ -740,6 +741,9 @@ def main(parser):
     mess_strings.append(' > rejected from total: {0} ({1:0.1f}%)'.format(count - block_with_info, p_rejec_info_tot))
     mess_strings.append(' > rejected from block with cell: {0} ({1:0.1f}%)'.format(
         block_with_cell - block_with_info, p_rejec_info))
+
+    mess_strings.append('\n > R matrix created with shape: ({}, {}, {}) cells (zyx).'.format(
+        R.shape[0], R.shape[1], R.shape[2]))
 
     # print and write into .txt
     write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
