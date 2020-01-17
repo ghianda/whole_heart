@@ -48,7 +48,7 @@ class Mode:
 
 class Bcolors:
     # to color different strings in the output0
-    V = '\033[95m'
+    VERB = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -144,18 +144,19 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
     matrix_of_local_fa = np.zeros(iterations).astype(np.float32)
 
     if _verb: print('\n *** Start elaboration...')
-    if _verb_deep: print(Bcolors.V)  # open colored session
+    if _verb_deep: print(Bcolors.VERB)  # open colored session
     _i = 0
     for z in range(iterations[2]):
         for r in range(iterations[0]):
             for c in range(iterations[1]):
                 if _verb_deep:
-                    print(' *** DEBUGGING MODE ACTIVATED ***')
+                    print(Bcolors.FAIL + ' *** DEBUGGING MODE ACTIVATED ***')
                     print('\n\n\n\n')
-
-                print(Bcolors.WARNING +
-                      'iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c) +
-                      Bcolors.V)
+                    print(Bcolors.WARNING +
+                          'iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c) +
+                          Bcolors.VERB)
+                else:
+                    print('iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c))
 
                 # grane extraction from R
                 start_coord = create_coord_by_iter(r, c, z, shape_G)
@@ -281,13 +282,12 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                 _i += 1
 
     # close colored session
-    if _verb_deep:
-        print(Bcolors.ENDC)
+    print(Bcolors.ENDC)
 
     return matrices_of_disarray, matrix_of_local_fa, shape_G, R
 
 
-def save_in_numpy_file(matrix_of_disarrays, R_prefix, shape_G, parameters,
+def save_in_numpy_file(array, R_prefix, shape_G, parameters,
                        base_path, process_folder, data_prefix=''):
 
     numpy_filename_endname = '{}_G({},{},{})_limNeig{}.npy'.format(
@@ -296,7 +296,7 @@ def save_in_numpy_file(matrix_of_disarrays, R_prefix, shape_G, parameters,
         int(parameters['neighbours_lim']))
 
     disarray_numpy_filename = data_prefix + numpy_filename_endname
-    np.save(os.path.join(base_path, process_folder, disarray_numpy_filename), matrix_of_disarrays)
+    np.save(os.path.join(base_path, process_folder, disarray_numpy_filename), array)
     return disarray_numpy_filename
 
 
@@ -369,7 +369,7 @@ def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
     """
     strings = list()
 
-    strings.append('\n \n *** Results of statistical analysis of {} on accepted points. \n'.format(name))
+    strings.append('\n\n *** Results of statistical analysis of {} on accepted points. \n'.format(name))
     strings.append('> Matrix of {} with shape: {}'.format(name, matrix.shape))
     strings.append('> Number of valid values: {}'.format(stats[Stat.N_VALID_VALUES]))
     strings.append('> Modality of statistical evaluation: {}\n'.format(mode))
@@ -384,7 +384,7 @@ def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
         # print('{0:0.2f}'.format(stats[getattr(Stat, att)]))
         # print('{0}'.format(ext))
 
-        # check if the parameter contains a string (ex: 'ARIITH' or 'WEIGHT')
+        # check if the parameter contains a string (ex: 'ARITH' or 'WEIGHT')
         if isinstance(stats[getattr(Stat, att)], str):
             strings.append(' - {0}: {1}'.format(getattr(Stat, att), stats[getattr(Stat, att)]))
 

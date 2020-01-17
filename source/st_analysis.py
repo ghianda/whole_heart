@@ -51,8 +51,15 @@ from scipy import ndimage as ndi
 # custom codes
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     all_words_in_txt, search_value_in_txt, pad_dimension, write_on_txt
-from custom_image_base_tool import normalize, print_info
+from custom_image_base_tool import normalize, print_info, plot_histogram, plot_map_and_save
 from local_disarray_by_R import estimate_local_disarray, save_in_numpy_file, compile_results_strings
+
+
+class ImgFrmt:
+    # image_format STRINGS
+    EPS = 'EPS'
+    TIFF = 'TIFF'
+    SVG = 'SVG'
 
 
 class Param:
@@ -84,7 +91,7 @@ class Stat:
 
 
 class Bcolors:
-    V = '\033[95m'
+    VERB = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -106,6 +113,10 @@ class Mode:
 class Cell_Ratio_mode:
     NON_ZERO_RATIO = 0.0
     MEAN = 1.0
+
+
+# constant value
+INV = -1  # invalid value in the local matrices (es: disarray, FA)
 
 '''
 def stats_with_grane_on_R(R, param, grane_dim=(1, 1, 1), invalid_value=None, invalid_par=None, _verb=False):
@@ -191,7 +202,7 @@ def statistics_base(x, w=None, valid_mask=None, invalid_value=None, _verb=False)
     :param x: is a numpy ndarray.
     :param w: is a numpy ndarray (same dimension of m) with the weights of m values
     :param valid_mask: ndarray of bool, same shapes of x. if passed, indicates which values use to evaluate the results
-    :param invalid_value: if valid_mask is not passed, it is evaluated by invalid_value (for ex: -1)
+    :param invalid_value: if valid_mask is not passed, it is evaluated by invalid_value (for ex: x != -1)
     :param _verb: boolean
     :return: stat: a dictionary containing the results
     """
@@ -201,7 +212,7 @@ def statistics_base(x, w=None, valid_mask=None, invalid_value=None, _verb=False)
         if w is not None:
             _w = True
             if _verb:
-                print(Bcolors.V)
+                print(Bcolors.VERB)
                 print('* Statistic estimation with weighted average')
         else:
             w = np.ones_like(x)  # all weights are set as 1 like in an arithmetic average
@@ -589,22 +600,31 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
 def main(parser):
 
     # INPUT HARDCODED FOR DEBUG ==================================================================================
-    print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
-    source_path = '/home/francesco/LENS/ST_analysis_tests/test_vasi/200116_test_vasi_FA_3.1/stack.tif'
-    parameter_filename = 'parameters_vessels.txt'
-    _verbose = True
-    _deep_verbose = False
-    _save_csv = False
+    # source_path = '/home/francesco/LENS/ST_analysis_tests/test_vasi/200116_test_vasi_FA_3.1/stack.tif'
+    # parameter_filename = 'parameters_vessels.txt'
+    # _verbose = False
+    # _deep_verbose = False
+    # _save_csv = True
+    # _save_hist = True
+    # _save_maps = True
+    # if _verbose:
+    #     print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
     # ============================================================================================================
 
 
     ## Extract input information FROM TERMINAL =========
-    # args = parser.parse_args()
-    # source_path = manage_path_argument(args.source_path)
-    # parameter_filename = args.parameters_filename[0]
-    # _verbose = args.verbose
-    # _deep_verbose = args.deep_verbose
-    # _save_csv = args.csv
+    args = parser.parse_args()
+    source_path = manage_path_argument(args.source_path)
+    parameter_filename = args.parameters_filename[0]
+    _verbose = args.verbose
+    _deep_verbose = args.deep_verbose
+    _save_csv = args.csv
+    _save_hist = args.hist
+    _save_maps = args.maps
+    if _verbose:
+        print(Bcolors.FAIL + ' *** VERBOSE MODE *** ' + Bcolors.ENDC)
+    if _deep_verbose:
+        print(Bcolors.FAIL + ' *** DEBUGGING MODE *** ' + Bcolors.ENDC)
     ## =================================================
 
     # extract filenames and folders
@@ -613,8 +633,6 @@ def main(parser):
     base_path = os.path.dirname(os.path.dirname(source_path))
     parameter_filepath = os.path.join(base_path, process_folder, parameter_filename)
     stack_prefix = stack_name.split('.')[0]
-
-
 
     # create sointroductiveme informations
     mess_strings = list()
@@ -626,6 +644,12 @@ def main(parser):
     mess_strings.append(' > Parameter filename: {}'.format(parameter_filename))
     mess_strings.append(' > Parameter filepath: {}'.format(parameter_filepath))
     mess_strings.append('')
+    mess_strings.append(' > PREFERENCES:')
+    mess_strings.append('  - _verbose', _verbose)
+    mess_strings.append('  - _deep_verbose', _deep_verbose)
+    mess_strings.append('  - _save_csv', _save_csv)
+    mess_strings.append('  - _save_hist', _save_hist)
+    mess_strings.append('  - _save_maps', _save_maps)
 
     # extract parameters
     param_names = ['roi_xy_pix',
@@ -651,21 +675,20 @@ def main(parser):
     ps_ratio = parameters['px_size_z'] / parameters['px_size_xy']
 
     # analysis block dimension in z-axis
-    num_of_slices_P = int(parameters['roi_xy_pix'] / ps_ratio)
-
-    row_P = col_P = int(parameters['roi_xy_pix'])
-    shape_P = np.array((row_P, col_P, num_of_slices_P)).astype(np.int32)
+    shape_P = np.array((int(parameters['roi_xy_pix']),
+                        int(parameters['roi_xy_pix']),
+                        int(parameters['roi_xy_pix'] / ps_ratio))).astype(np.int32)
 
     mess_strings.append('\n *** Analysis configuration')
     mess_strings.append(' > Rapporto fra Pixel Size (z / xy) = {0:0.2f}'.format(ps_ratio))
     mess_strings.append(' > Numero di slice selezionate per ogni ROI ({} x {}): {}'.format(
-        row_P, col_P, num_of_slices_P))
+        shape_P[0], shape_P[1], shape_P[2]))
     mess_strings.append(' > Dimension of Parallelepiped: ({0},{1},{2}) pixel  ='
                         '  [{3:2.2f} {4:2.2f} {5:2.2f}] um'.format(
         shape_P[0], shape_P[1], shape_P[2],
-        row_P * parameters['px_size_xy'],
-        col_P * parameters['px_size_xy'],
-        num_of_slices_P * parameters['px_size_z']))
+        shape_P[0] * parameters['px_size_xy'],
+        shape_P[1] * parameters['px_size_xy'],
+        shape_P[2] * parameters['px_size_z']))
 
     # create result.txt filename:
     txt_info_filename = 'Orientations_INFO_' + stack_prefix + '_' \
@@ -716,6 +739,7 @@ def main(parser):
 
     # real analysis on R
     R, count = iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose)
+    mess_strings.append('\n > Orientation analysis completed.')
 
     # extract informations about the data analyzed
     block_with_cell = np.count_nonzero(R[Param.CELL_INFO])
@@ -754,13 +778,13 @@ def main(parser):
     # Disarray and Fractional Anisotropy estimation
 
     # the function estimate local disarrays and fractional anisotropy and write these values also inside R
-    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
-                                                                                    ev_index=2,
-                                                                                    _verb=_verbose,
-                                                                                    _verb_deep=_deep_verbose)
+    mtrx_of_disarrays, mtrx_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
+                                                                              ev_index=2,
+                                                                              _verb=_verbose,
+                                                                              _verb_deep=_deep_verbose)
 
     # 4 ----------------------------------------------------------------------------------------------------
-    # WRITE RESULTS AND SAVE
+    # SAVE NUMPY FILES AND COMPILE RESULTS
 
     # create result matrix (R) filename:
     R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
@@ -769,49 +793,54 @@ def main(parser):
 
     # Save Results in R.npy
     np.save(R_filepath, R)
-    mess_strings.append('\n > R matrix saved in: {}'.format(os.path.dirname(source_path)))
-    mess_strings.append(' > with name: {}'.format(R_filename))
-    mess_strings.append('\n > Informations .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
-    mess_strings.append(' > with name: {}'.format(txt_info_filename))
+    mess_strings.append('\n> R matrix saved in: {}'.format(os.path.dirname(source_path)))
+    mess_strings.append('> with name: {}'.format(R_filename))
+    mess_strings.append('\n> Informations .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
+    mess_strings.append('> with name: {}'.format(txt_info_filename))
 
     # print and write into .txt
     write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
+    # clear list of strings
+    mess_strings.clear()
 
     # save numpy file of both disarrays matrix (calculated with arithmetic and weighted average)
     # and get their filenames
     # [estraggo lista degli attributi della classe Mode
     # e scarto quelli che cominciano con '_' perchè saranno moduli]
-    disarray_numpy_filename = dict()
+    disarray_np_filename = dict()
     for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
-        disarray_numpy_filename[getattr(Mode, mode)] = save_in_numpy_file(
-                                                            matrices_of_disarrays[getattr(Mode, mode)],
+        disarray_np_filename[getattr(Mode, mode)] = save_in_numpy_file(
+                                                            mtrx_of_disarrays[getattr(Mode, mode)],
                                                             R_prefix, shape_G,
                                                             parameters, base_path, process_folder,
                                                             data_prefix='MatrixDisarray_{}_'.format(mode))
 
     # save numpy file of fractional anisotropy
-    fa_numpy_filename = save_in_numpy_file(matrix_of_local_fa, R_prefix, shape_G, parameters,
+    fa_np_filename = save_in_numpy_file(mtrx_of_local_fa, R_prefix, shape_G, parameters,
                                            base_path, process_folder, data_prefix='FA_local_')
 
-    mess_strings.append('\nMatrix of Disarray and Fractional Anisotropy saved in:')
+    mess_strings.append('\n> Matrix of Disarray and Fractional Anisotropy saved in:')
     mess_strings.append('> {}'.format(os.path.join(base_path, process_folder)))
-    mess_strings.append('with name: {}\n > {}\n > {}\n'.format(
-                                                                disarray_numpy_filename[Mode.ARITH],
-                                                                disarray_numpy_filename[Mode.WEIGHT],
-                                                                fa_numpy_filename))
+    mess_strings.append('with name: \n > {}\n > {}\n > {}\n'.format(
+                                                                disarray_np_filename[Mode.ARITH],
+                                                                disarray_np_filename[Mode.WEIGHT],
+                                                                fa_np_filename))
     mess_strings.append('\n')
 
+    # 5 ----------------------------------------------------------------------------------------------------
+    # STATISTICS ESTIMATION, HISTOGRAMS AND SAVINGS
+
     # estimate statistics (see class Stat) of both disarray (arithm and weighted) and of fa
-    disarray_ARITM_stats = statistics_base(matrices_of_disarrays[Mode.ARITH], invalid_value=-1)
-    disarray_WEIGHT_stats = statistics_base(matrices_of_disarrays[Mode.WEIGHT],
-                                            w=matrix_of_local_fa,
-                                            invalid_value=-1)
-    fa_stats = statistics_base(matrix_of_local_fa, invalid_value=-1)
+    disarray_ARITM_stats = statistics_base(mtrx_of_disarrays[Mode.ARITH], invalid_value=INV)
+    disarray_WEIGHT_stats = statistics_base(mtrx_of_disarrays[Mode.WEIGHT],
+                                            w=mtrx_of_local_fa,
+                                            invalid_value=INV)
+    fa_stats = statistics_base(mtrx_of_local_fa, invalid_value=INV)
 
     # compile and append statistical results strings
-    s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], 'Disarray', disarray_ARITM_stats, 'ARITH', '%')
-    s2 = compile_results_strings(matrices_of_disarrays[Mode.WEIGHT], 'Disarray', disarray_WEIGHT_stats, 'WEIGHT', '%')
-    s3 = compile_results_strings(matrix_of_local_fa, 'Fractional Anisotropy', fa_stats)
+    s1 = compile_results_strings(mtrx_of_disarrays[Mode.ARITH], 'Disarray', disarray_ARITM_stats, 'ARITH', '%')
+    s2 = compile_results_strings(mtrx_of_disarrays[Mode.WEIGHT], 'Disarray', disarray_WEIGHT_stats, 'WEIGHT', '%')
+    s3 = compile_results_strings(mtrx_of_local_fa, 'Fractional Anisotropy', fa_stats)
     disarray_and_fa_results_strings = s1 + ['\n\n\n'] + s2 + ['\n\n\n'] + s3
 
     # update mess strings
@@ -824,40 +853,97 @@ def main(parser):
         int(parameters['neighbours_lim']))
 
     if _save_csv:
-        for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
-            # extract only valid disarray values
-            disarray_values = matrices_of_disarrays[getattr(Mode, mode)][matrices_of_disarrays[getattr(Mode, mode)] != -1]
-            disarray_csv_filename = txt_results_filename.split('.')[0] + '_{}.csv'.format(getattr(Mode, mode))
-            np.savetxt(os.path.join(base_path, process_folder, disarray_csv_filename),
-                       disarray_values,
-                       delimiter=",", fmt='%f')
+        mess_strings.append('\n> CSV files are saved in:')
+
+        # save in csv bot disarray matrices and local_FA
+        for (mtrx, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa],
+                        [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT], fa_np_filename]):
+
+            # extract only valid values (different of INV = -1)
+            values = mtrx[mtrx != INV]
+
+            # create csv filepath and save the data
+            csv_filename = np_fname.split('.')[0] + '.csv'
+            csv_filepath = os.path.join(base_path, process_folder, csv_filename)
+            np.savetxt(csv_filepath, values, delimiter=",", fmt='%f')
+            mess_strings.append('> {}'.format(csv_filepath))
+
+    if _save_hist:
+        mess_strings.append('\n> Histogram plots are saved in:')
+
+        # zip values, description and filename
+        for (mtrx, lbl, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT],
+                                   mtrx_of_local_fa],
+                                  ['Local Disarray % (Arithmetic mean)', 'Local Disarray % (Weighted mean)',
+                                   'Local Fractional Anisotropy'],
+                                  [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT],
+                                   fa_np_filename]):
+
+            # extract only valid values (different of INV = -1)
+            values = mtrx[mtrx != INV]
+
+            # create path name
+            hist_fname = '.'.join(np_fname.split('.')[:-1]) + '.tiff'  # remove .npy and add .tiff
+            hist_filepath = os.path.join(base_path, process_folder, hist_fname)
+
+            # create histograms and save they as images
+            plot_histogram(values, xlabel=lbl, ylabel='Sub-Volume occurrence', filepath=hist_filepath)
+            mess_strings.append('> {}'.format(hist_filepath))
+
+    if _save_maps:
+        mess_strings.append('\n> Disarray and FA plots are saved in:')
+
+        # disarray values normalization:
+        # disarrays are normalized together to safe the little differences between ARITM and WEIGH
+        # invalid values are NOT removed to preserve the matrix shape -> image
+        # invalid values (if present) become the minimum values
+        abs_max = np.max([mtrx_of_disarrays[Mode.ARITH].max(), mtrx_of_disarrays[Mode.WEIGHT].max()])
+        abs_min = np.min([mtrx_of_disarrays[Mode.ARITH].min(), mtrx_of_disarrays[Mode.WEIGHT].min()])
+        dis_norm_A = 255 * ((mtrx_of_disarrays[Mode.ARITH] - abs_min) / (abs_max - abs_min))
+        dis_norm_W = 255 * ((mtrx_of_disarrays[Mode.WEIGHT] - abs_min) / (abs_max - abs_min))
+
+        # def destination folder
+        dest_folder = os.path.join(base_path, process_folder)
+
+        # create and save frame for each data (disarrays and FA)
+        for (mtrx, np_fname) in zip([dis_norm_A, dis_norm_W, mtrx_of_local_fa],
+                                    [disarray_np_filename[Mode.ARITH],
+                                     disarray_np_filename[Mode.WEIGHT],
+                                     fa_np_filename]):
+
+            # plot frames and save they in a sub_folder (folder_path)
+            folder_path = plot_map_and_save(mtrx, np_fname, dest_folder, shape_G, shape_P)
+            mess_strings.append('> {}'.format(folder_path))
 
     # print and write into .txt
     txt_results_filepath = os.path.join(base_path, process_folder, txt_results_filename)
     write_on_txt(mess_strings, txt_results_filepath, _print=True, mode='w')
-
 # =============================================== END MAIN () ================================================
 
 
 if __name__ == '__main__':
 
     # ============================================== START  BY TERMINAL ======================================
-    # my_parser = argparse.ArgumentParser(description='Orientation analysis - 3D Structure Tensor based')
-    # my_parser.add_argument('-s', '--source-path', nargs='+',
-    #                        help='absolut path of sample to analyze (3d tiff file or folder of tiff files) ',
-    #                        required=True)
-    # my_parser.add_argument('-p', '--parameters-filename', nargs='+',
-    #                        help='filename of parameters.txt file (in the same folder of stack)', required=True)
-    # my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
-    #                        help='print additional informations')
-    # my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
-    #                        help='[debug mode] - print a lot of additional data, points, values etc.')
-    # my_parser.add_argument('-c', action='store_true', default=False, dest='csv',
-    #                        help='save numpy results also as CSV file')
-    # main(my_parser)
+    my_parser = argparse.ArgumentParser(description='Orientation analysis - 3D Structure Tensor based')
+    my_parser.add_argument('-s', '--source-path', nargs='+',
+                           help='absolut path of sample to analyze (3d tiff file or folder of tiff files) ',
+                           required=True)
+    my_parser.add_argument('-p', '--parameters-filename', nargs='+',
+                           help='filename of parameters.txt file (in the same folder of stack)', required=True)
+    my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
+                           help='print additional informations')
+    my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
+                           help='[debug mode] - print a lot of additional data, points, values etc.')
+    my_parser.add_argument('-c', action='store_true', default=True, dest='csv',
+                           help='save numpy results also as CSV file')
+    my_parser.add_argument('-h', action='store_true', default=True, dest='histogram',
+                                                  help='save histograms of results as images')
+    my_parser.add_argument('-m', action='store_true', default=True, dest='maps',
+                                                  help='save maps of disarray and FA as images')
+    main(my_parser)
     # ============================================== START  BY TERMINAL ======================================
 
     # ========= START FOR DEBUG =========
-    my_parser = argparse.ArgumentParser()
-    main(my_parser)  # empty
+    # my_parser = argparse.ArgumentParser()
+    # main(my_parser)  # empty
     # ========= START FOR DEBUG =========

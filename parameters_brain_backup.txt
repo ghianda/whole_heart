@@ -1,8 +1,8 @@
-# PARAMETRI GENERALI _________________________________
+# PARAMETRI SISTEMA ACQUISIZIONE _____________________________________________
 
 # Parameters of Acquisition System:
 # Pixel Size (micro-meter, um)
-px_size_xy = 0.439
+px_size_xy = 0.439	
 px_size_z = 1
 
 # FWHM (um)
@@ -10,25 +10,29 @@ fwhm_xy = 0.731
 fwhm_z = 3.09
 
 
+# ANALISI ORIENTAZIONE 3D ____________________________________________________
 
-# FASE GAMMA - ANALISI 3D ORIENTAZIONE _________________________________
-
-# define ROI dimension - parallelepiped: 'P'
-# (xy side of every block of data for orientation analysis)
+# define ROI dimension:
+# xy side (in pixel) of every block of data for orientation analysis
+# example:
+#  64  --> 32um    
+#  128 --> 56um
+#  256 --> 112um
+#  512 --> 448um
 roi_xy_pix = 70
 
 # define mode and theshold of tissue estimation inside block to allow analysis 
 # example: 'non_zero_ratio' and 0.8 (at least 80% of non zero voxel), 
 # or 'mean' and 10 (ldg mean inside block)
-# if mode_ratio = 0 --> 'non_zero_ratio' -> number of non zero voxel
-# if mode_ratio = 1 --> 'mean' -> ldg values
+# if mode-ratio = 0 --> 'non_zero_ratio' -> number of non zero voxel
+# if mode-ratio = 1 --> 'mean' -> ldg values
 mode_ratio = 0
-threshold_on_cell_ratio = 0.8
+threshold_on_cell_ratio = 0.95  <-- to set manually if the stack is not full
 
-# Dimension of grane of Local Disarray analysis inside Result Matrix
+# Dimension of grane of Local Disarray analysis inside Result Matrix [lasciali cosi]
 local_disarray_xy_side = 4 
-local_disarray_z_side = 1
-neighbours_lim = 8  # min num of neighbours blocks for evaluation of local_disarray value.
+local_disarray_z_side = 1 
+neighbours_lim = 3  # min num of neighbours blocks for evaluation of local_disarray value.
 
 
 
