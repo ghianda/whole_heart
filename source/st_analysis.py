@@ -619,7 +619,7 @@ def main(parser):
     _verbose = args.verbose
     _deep_verbose = args.deep_verbose
     _save_csv = args.csv
-    _save_hist = args.hist
+    _save_hist = args.histogram
     _save_maps = args.maps
     if _verbose:
         print(Bcolors.FAIL + ' *** VERBOSE MODE *** ' + Bcolors.ENDC)
@@ -645,11 +645,11 @@ def main(parser):
     mess_strings.append(' > Parameter filepath: {}'.format(parameter_filepath))
     mess_strings.append('')
     mess_strings.append(' > PREFERENCES:')
-    mess_strings.append('  - _verbose', _verbose)
-    mess_strings.append('  - _deep_verbose', _deep_verbose)
-    mess_strings.append('  - _save_csv', _save_csv)
-    mess_strings.append('  - _save_hist', _save_hist)
-    mess_strings.append('  - _save_maps', _save_maps)
+    mess_strings.append('  - _verbose {}'.format(_verbose))
+    mess_strings.append('  - _deep_verbose {}'.format(_deep_verbose))
+    mess_strings.append('  - _save_csv {}'.format(_save_csv))
+    mess_strings.append('  - _save_hist {}'.format(_save_hist))
+    mess_strings.append('  - _save_maps {}'.format(_save_maps))
 
     # extract parameters
     param_names = ['roi_xy_pix',
@@ -936,7 +936,7 @@ if __name__ == '__main__':
                            help='[debug mode] - print a lot of additional data, points, values etc.')
     my_parser.add_argument('-c', action='store_true', default=True, dest='csv',
                            help='save numpy results also as CSV file')
-    my_parser.add_argument('-h', action='store_true', default=True, dest='histogram',
+    my_parser.add_argument('-i', action='store_true', default=True, dest='histogram',
                                                   help='save histograms of results as images')
     my_parser.add_argument('-m', action='store_true', default=True, dest='maps',
                                                   help='save maps of disarray and FA as images')

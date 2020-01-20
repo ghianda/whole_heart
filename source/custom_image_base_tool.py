@@ -58,7 +58,7 @@ def plot_map_and_save(matrix, np_filename, base_path, shape_G, shape_P, img_form
 
         # create plot
         fig = plt.figure(figsize=(15, 15))
-        plt.imshow(img)
+        plt.imshow(img, cmap='gray')
         plt.title(title)
         # plt.show()
 
