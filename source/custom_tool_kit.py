@@ -2,6 +2,41 @@ import numpy as np
 import math
 
 
+# ===================================     CLASSES    ========================================
+
+
+class Bcolors:
+    VERB = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+# ===================================    METHODS    ================================================
+
+
+def extract_parameters(filename, param_names, _verb=False):
+    ''' read parameters values in filename.txt
+    and save it in a dictionary'''
+
+    # read values in txt
+    param_values = search_value_in_txt(filename, param_names)
+
+    print('\n ***  Parameters : \n')
+    # create dictionary of parameters
+    parameters = {}
+    for i, p_name in enumerate(param_names):
+        parameters[p_name] = float(param_values[i])
+        if _verb:
+            print(' - {} : {}'.format(p_name, param_values[i]))
+    if _verb: print('\n \n')
+    return parameters
+
+
 def write_on_txt(strings, txt_path, _print=False, mode='a'):
     # write the lines in 'strings' list into .txt file addressed by txt_path
     # if _print is True, the lines is printed
@@ -27,18 +62,18 @@ def search_value_in_txt(filepath, strings_to_search):
     # strings_to_search is a string or a list of string
     if type(strings_to_search) is not list:
         strings_to_search = [strings_to_search]
-        
+
     # read all words in filepath
     words = all_words_in_txt(filepath)
-    
+
     # search strings
     values = [words[words.index(s) + 2] for s in strings_to_search if s in words]
-    
+
     return values
 
 
 def manage_path_argument(source_path):
-    '''
+    """
     # manage input parameters:
     # if script is call by terminal, source_path is a list with one string inside (correct source path)
     # if script is call by another script (structural_analysis, for example), and if source_path contains some ' ' whitesace,
@@ -47,24 +82,31 @@ def manage_path_argument(source_path):
     :param source_path : variables from args.source_folder
                          it's a list with inside the path of the images to processing.
     :return
-    '''
-    if type(source_path) is list:
-        if len(source_path) > 1:
-            # there are white spaces, system split in more string (wrong)
-            given_path = ' '.join(source_path)
+    """
+    try:
+        if source_path is not None:
+            if type(source_path) is list:
+                if len(source_path) > 1:
+                    # there are white spaces, system split in more string (wrong)
+                    given_path = ' '.join(source_path)
+                else:
+                    given_path = source_path[0]
+            else:
+                given_path = source_path
+
+            # # correct whitespace with backslash
+            # given_path = given_path.replace(' ', '\ ')
+
+            # extract base path
+            if given_path.endswith('/'):
+                given_path = given_path[0:-1]
+            return given_path
         else:
-            given_path = source_path[0]
-    else:
-        given_path = source_path
+            return None
 
-    # # correct whitespace with backslash
-    # given_path = given_path.replace(' ', '\ ')
-
-    # extract base path
-    if given_path.endswith('/'):
-        given_path = given_path[0:-1]
-
-    return given_path
+    except:
+        print(Bcolors.FAIL + '[manage_path_argument] -> source_path is empty?' + Bcolors.ENDC)
+        return None
 
 
 def pad_dimension(matrix, shape):
@@ -86,24 +128,24 @@ def pad_dimension(matrix, shape):
         if matrix.shape[2] < shape[2]:
             zero_pad = np.zeros((matrix.shape[0], matrix.shape[1], int(shape[2] - matrix.shape[2])))
             matrix = np.concatenate((matrix, zero_pad), 2)
-        
+
         return matrix
-        
+
     else:
         raise ValueError('Block or shape is None')
 
 
 def create_coord_by_iter(r, c, z, shape_P, _z_forced=False):
     # create init coordinate for parallelepiped
-    
+
     row = r * shape_P[0]
     col = c * shape_P[1]
-    
+
     if _z_forced:
         zeta = z
     else:
         zeta = z * shape_P[2]
-        
+
     return (row, col, zeta)
 
 
@@ -134,7 +176,7 @@ def compile_spherical_coord(coord, center, intensity=None):
     # coord : coordinate cartesiane del punto massimo dello spettro, con sistema di riferimento il cubetto stesso
     # center: coordinate del centro del cubetto, con sistema di riferimento il cubetto stesso
     # intensity: valore normalizzato del picco trovato ( misura dell'informazione in frequenza usata per la sogliatura)
-    
+
     # find relative coordinates (center is the (0,0,0) in the relative system) 
     relative = (
         coord[0] - center[0],
@@ -148,7 +190,7 @@ def compile_spherical_coord(coord, center, intensity=None):
     # - and azimuthal angle φ (phi). 
 
     # z-axis is the optical axis
-    
+
     # phi is the angle on the XY plane. phi = 0 if parallel to y axis (up/down).
     # phi is include in [0, 180] degree if x >= 0 and in (-0, -180) if x<0          
     #    φ (PHI)
@@ -184,31 +226,31 @@ def compile_spherical_coord(coord, center, intensity=None):
 
     # find spherical coordinates (OLD)
     spherical = np.zeros(len(coord))
-    xy = relative[0]**2 + relative[1]**2
-    spherical[0] = np.sqrt(xy + relative[2]**2)  # radius
-    spherical[1] = (180 / np.pi) * np.arctan2(np.sqrt(xy), relative[2])  # for elevation angle defined from Z-axis down ()
-    #spherical[1] = (180 / np.pi) * np.arctan2(xyz[2], np.sqrt(xy))  # for elevation angle defined from XY-plane up
-    spherical[2] = (180 / np.pi) * np.arctan2(relative[1], relative[0]) # phi
-    
+    xy = relative[0] ** 2 + relative[1] ** 2
+    spherical[0] = np.sqrt(xy + relative[2] ** 2)  # radius
+    spherical[1] = (180 / np.pi) * np.arctan2(np.sqrt(xy),
+                                              relative[2])  # for elevation angle defined from Z-axis down ()
+    # spherical[1] = (180 / np.pi) * np.arctan2(xyz[2], np.sqrt(xy))  # for elevation angle defined from XY-plane up
+    spherical[2] = (180 / np.pi) * np.arctan2(relative[1], relative[0])  # phi
+
     # NEW
     # spherical = np.zeros(len(coord))
     # xy = relative[0]**2 + relative[1]**2
     # xr_abs = np.abs(relative[0])
     # yr_abs = np.abs(relative[1])
-    
+
     # spherical[0] = np.sqrt(xy + relative[2]**2)  # radius (rho)
     # spherical[1] = (180 / np.pi) * np.arctan2(np.sqrt(xy), relative[2])  # theta - for elevation angle defined from Z-axis down ()
     # #spherical[1] = (180 / np.pi) * np.arctan2(xyz[2], np.sqrt(xy))  # theta - for elevation angle defined from XY-plane up
     # spherical[2] = (180 / np.pi) * ((np.pi / 2) - np.arctan2(yr_abs, xr_abs)) # phi
-    
 
     complete_coord = {
-        'cartesian' : tuple(coord),      # x, y, z
-        'relative to center'  : tuple(relative),   # xr, yr, zr
-        'spherical' : {
-            'val' : tuple(spherical),   # rho, phi, theta
-            'legend' : ('rho', 'theta', 'phi')},
-        'intensity' : intensity
+        'cartesian': tuple(coord),  # x, y, z
+        'relative to center': tuple(relative),  # xr, yr, zr
+        'spherical': {
+            'val': tuple(spherical),  # rho, phi, theta
+            'legend': ('rho', 'theta', 'phi')},
+        'intensity': intensity
     }
     return complete_coord
 
@@ -217,7 +259,7 @@ def compile_spherical_coord(coord, center, intensity=None):
 def spherical_coord(coord, center):
     # coord : coordinate cartesiane del punto massimo dello spettro, con sistema di riferimento il cubetto stesso
     # center: coordinate del centro del cubetto, con sistema di riferimento il cubetto stesso
-    
+
     # find relative coordinates (center is the (0,0,0) in the relative system) 
     relative = (
         coord[0] - center[0],
@@ -231,7 +273,7 @@ def spherical_coord(coord, center):
     # - and azimuthal angle φ (phi). 
 
     # z-axis is the optical axis
-    
+
     # phi is the angle on the XY plane. phi = 0 if parallel to y axis (up/down).
     # phi is include in [0, 180] degree if x >= 0 and in (-0, -180) if x<0          
     #    φ (PHI)
@@ -264,14 +306,15 @@ def spherical_coord(coord, center):
     #                |
     #                |0
     # 				z>0
-    
+
     # find spherical coordinates
     spherical = np.zeros(len(coord))
-    xy = relative[0]**2 + relative[1]**2
-    
-    radius = np.sqrt(xy + relative[2]**2) 
-    theta = (180 / np.pi) * np.arctan2(np.sqrt(xy), relative[2])  # theta - for elevation angle defined from Z-axis down to xy plane
-    phi = (180 / np.pi) * np.arctan2(relative[1], relative[0]) # phi
+    xy = relative[0] ** 2 + relative[1] ** 2
+
+    radius = np.sqrt(xy + relative[2] ** 2)
+    theta = (180 / np.pi) * np.arctan2(np.sqrt(xy),
+                                       relative[2])  # theta - for elevation angle defined from Z-axis down to xy plane
+    phi = (180 / np.pi) * np.arctan2(relative[1], relative[0])  # phi
 
     return (radius, phi, theta)
 
@@ -295,7 +338,4 @@ def seconds_to_min_sec(sec):
     else:
         h = int(sec // 3600)
         return h, int(sec // 60) - h * 60, int(sec % 60)
-
-
-
 

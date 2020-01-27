@@ -4,9 +4,29 @@ import argparse
 
 # general
 import numpy as np
+from numpy import linalg as LA
+from scipy import stats as scipy_stats
+
+
+# image
+from skimage.filters import gaussian
+from skimage import transform
+from scipy import ndimage as ndi
 
 # custom codes
-from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, all_words_in_txt, search_value_in_txt
+from custom_image_base_tool import normalize
+from custom_tool_kit import Bcolors, create_coord_by_iter, create_slice_coordinate
+
+# ###################################    CLASSES    #########################################à
+
+
+class CONST:
+    INV = -1
+
+
+class Cell_Ratio_mode:
+    NON_ZERO_RATIO = 0.0
+    MEAN = 1
 
 
 class Param:
@@ -32,6 +52,7 @@ class Stat:
     MAX = 'max'
     AVG = 'avg'  # statistics mean
     STD = 'std'
+    SEM = 'sem'  # standard error of the mean
     MEDIAN = 'median'  # statistics median
     MODE = 'mode'  # statistics mode
     MODALITY = 'modality'  # for arithmetic or weighted
@@ -46,34 +67,314 @@ class Mode:
     WEIGHT = 'weighted'
 
 
-class Bcolors:
-    # to color different strings in the output0
-    VERB = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+# ##############################################    METHODS     ################################################
 
 
-def extract_parameters(filename, param_names, _verb = False):
-    ''' read parameters values in filename.txt
-    and save it in a dictionary'''
+def downsample_2_zeta_resolution(vol, px_size_xy, px_size_z, sigma):
+    # Opera uno smoothing in xy per portare la larghezza della PSF in xy UGUALE alla larghezza della PSF in Zeta.
+    # Poi fa downsampling per uniformare anche la pixel size.
+    # L'immagine prodotta avrà le stesse caratteristiche delle sezioni XZ e YZ,
+    # in modo da rendere il volume a risoluzione isotropa e
+    # l'operazione di derivazione nei tre assi priva di sbilanciamenti.
+    #
+    # vol is np.uint8
+    # downsampled is np.float32
 
-    # read values in txt
-    param_values = search_value_in_txt(filename, param_names)
+    # estimate new isotropic sizes
+    resize_ratio = px_size_xy / px_size_z
+    resized_dim = int(resize_ratio * vol.shape[0])
 
-    print('\n ***  Parameters : \n')
-    # create dictionary of parameters
-    parameters = {}
-    for i, p_name in enumerate(param_names):
-        parameters[p_name] = float(param_values[i])
+    downsampled = np.zeros((resized_dim, resized_dim, vol.shape[2]), dtype=np.float32)
+
+    for z in range(vol.shape[2]):
+        # convolve with gaussian kernel for smooth
+        blurred = gaussian(image=vol[:, :, z], sigma=sigma, mode='reflect')
+
+        # resize and save into new downsampled volume
+        downsampled[:, :, z] = normalize(
+            img=transform.resize(image=blurred, output_shape=(resized_dim, resized_dim), mode='reflect'),
+            dtype=np.float32)
+
+    return downsampled
+
+
+def sigma_for_uniform_resolution(FWHM_xy, FWHM_z, px_size_xy):
+    # Legend: SD: Standard Deviation = sigma; Var: Variance = sigma**2
+    #
+    # For uniform resolution over 3 axes, xy plane are blurred by a gaussian kernel with sigma = sigma_s.
+    # Sigma_s depends by resolution (FWHM) in xy and Z
+    # f_xy convoled f_s = f_z, where f is Gaussian profile of 1d PSF.
+    # so, sigma_xy**2 + sigma_s**2 = sigma_z**2
+    #
+    # That function calculate sigma_s (in micron) by converting FWHM_xy and FWHM_z in sigma_xy and sigma_z,
+    # and calculate sigma_s in pixel by pixel sixe in xy.
+
+    # estimate variance (sigma**2) by FWHM (in micron)
+    sigma2_xy = FWHM_xy ** 2 / (8 * np.log(2))
+    sigma2_z = FWHM_z ** 2 / (8 * np.log(2))
+
+    # estimate variance (sigma_s**2) of gaussian kernel (in micron)
+    sigma2_s = np.abs(sigma2_z - sigma2_xy)
+
+    # estimate SD of Gaussian Kernel (in micron)
+    sigma_s = np.sqrt(sigma2_s)
+
+    # return SD in pixel
+    return sigma_s / px_size_xy
+
+
+def check_in_upper_semisphere(v):
+    # if versor in in y < 0 semisphere, take versor with opposite direction
+    if v[1] >= 0:
+        v_rot = np.copy(v)
+    else:
+        v_rot = -np.copy(v)
+    return v_rot
+
+
+def structure_tensor_analysis_3d(vol):
+    #
+    # Structure Tensor definita così:
+    # ogni elemento (i,j) dello ST sarà la media della matrice IiIj
+    # create ST matrix with mean of Ixx, Ixy and Iyy
+    #
+    # |IxIx  IxIy  IxIz|          |mean(IxIx)  mean(IxIy)  mean(IxIz)|
+    # |IyIx  IyIy  IyIz|     ->   |mean(IyIx)  mean(IyIy)  mean(IyIz)|
+    # |IzIx  IzIy  IzIz|     ->   |mean(IzIx)  mean(IzIy)  mean(IzIz)|
+    #   (3 x 3 x m x m)      -->                 (3 x 3)
+    #    m : ROI side
+    #
+    # INPUT: vol (rcz = yxz)
+    # OUTPUT: (eigenvalues, eigenvectors, shape_parameters)
+    # eigenvalues and eigenvectors are oredered by descending eigenvalues values.
+    # w[0] > w[1] >...
+
+    # Compute Gradient over x y z directions
+    gx, gy, gz = np.gradient(vol)
+
+    # compute second order moment of gradient
+    Ixx = ndi.gaussian_filter(gx * gx, sigma=1, mode='constant', cval=0)
+    Ixy = ndi.gaussian_filter(gx * gy, sigma=1, mode='constant', cval=0)
+    Ixz = ndi.gaussian_filter(gx * gz, sigma=1, mode='constant', cval=0)
+    # Iyx = Ixy, simmetric
+    Iyy = ndi.gaussian_filter(gy * gy, sigma=1, mode='constant', cval=0)
+    Iyz = ndi.gaussian_filter(gy * gz, sigma=1, mode='constant', cval=0)
+    # Izx = Ixz, simmetric
+    # Izy = Iyz, simmetric
+    Izz = ndi.gaussian_filter(gz * gz, sigma=1, mode='constant', cval=0)
+
+    # create ST matrix with mean of Ixx, Ixy and Iyy
+    # |IxIx  IxIy  IxIz|          |mean(IxIx)  mean(IxIy)  mean(IxIz)|
+    # |IyIx  IyIy  IyIz|     ->   |mean(IyIx)  mean(IyIy)  mean(IyIz)|
+    # |IzIx  IzIy  IzIz|     ->   |mean(IzIx)  mean(IzIy)  mean(IzIz)|
+    #   (3 x 3 x m x m)      -->                 (3 x 3)
+    ST = np.array([[np.mean(Ixx), np.mean(Ixy), np.mean(Ixz)],
+                   [np.mean(Ixy), np.mean(Iyy), np.mean(Iyz)],
+                   [np.mean(Ixz), np.mean(Iyz), np.mean(Izz)]])
+
+    # eigenvalues and eigenvectors decomposition
+    w, v = LA.eig(ST)
+    # NB : the column v[:,i] is the eigenvector corresponding to the eigenvalue w[i].
+
+    # ordino autovalori e autovettori t.c. w0 > w1 > w2
+    order = np.argsort(w)[::-1]  # decrescent order
+    w = np.copy(w[order])
+    v = np.copy(v[:, order])
+
+    # sposta autovettori sulla semisfera con y > 0
+    ev_rotated = np.zeros_like(v)
+    for axis in range(v.shape[1]):
+        ev_rotated[:, axis] = check_in_upper_semisphere(v[:, axis])
+
+    # parameri di forma
+    shape_parameters = dict()
+
+    # calcolo fractional anisotropy (0 isotropy -> 1 anisotropy)
+    shape_parameters['fa'] = np.sqrt(1/2) * (
+        np.sqrt((w[0] - w[1]) ** 2 + (w[1] - w[2]) ** 2 + (w[2] - w[0]) ** 2) / np.sqrt(np.sum(w ** 2))
+    )
+
+    # calcolo parametro forza del gradiente (per distinguere contenuto da sfondo)
+    # (w1 .=. w2 .=. w3)
+    shape_parameters['strenght'] = np.sqrt(np.sum(w))
+
+    # calcolo dimensionalità forma cilindrica (w1 .=. w2 >> w3)
+    shape_parameters['cilindrical_dim'] = (w[1] - w[2]) / (w[1] + w[2])
+
+    # calcolo dimensionalità forma planare (w1 >> w2 .=. w3)
+    shape_parameters['planar_dim'] = (w[0] - w[1]) / (w[0] + w[1])
+
+    return (w, ev_rotated, shape_parameters)
+
+
+
+
+
+def create_R(shape_V, shape_P):
+    '''
+    Define Results Matrix - 'R'
+
+    :param shape_V: shape of entire Volume of data
+    :param shape_P: shape of parallelepipeds extracted for orientation analysis
+    :return: empty Result matrix 'R'
+    '''
+
+    if any(shape_V > shape_P):
+        # shape
+        shape_R = np.ceil(shape_V / shape_P).astype(np.int)
+
+        # define empty Results matrix
+        total_num_of_cells = np.prod(shape_R)
+        R = np.zeros(
+            total_num_of_cells,
+            dtype=[(Param.ID_BLOCK, np.int64),  # unique identifier of block
+                   (Param.CELL_INFO, bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+                   (Param.ORIENT_INFO, bool),  # 1 if block is analyzed, 0 if it is rejected by cell_threshold
+                   (Param.CELL_RATIO, np.float16),  # ratio between cell voxel and all voxel of block
+                   (Param.INIT_COORD, np.int32, (1, 3)),  # absolute coord of voxel block[0,0,0] in Volume
+                   (Param.EW, np.float32, (1, 3)),  # descending ordered eigenvalues.
+                   (Param.EV, np.float32, (3, 3)),  # column ev[:,i] is the eigenvector of the eigenvalue w[i].
+                   (Param.STRENGHT, np.float16),  # parametro forza del gradiente (w1 .=. w2 .=. w3)
+                   (Param.CILINDRICAL_DIM, np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
+                   (Param.PLANAR_DIM, np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
+                   (Param.FA, np.float16),  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+                   (Param.LOCAL_DISARRAY, np.float16),  # local_disarray
+                   (Param.LOCAL_DISARRAY_W, np.float16)  # local_disarray using FA as weight for the versors
+                   ]
+        ).reshape(shape_R)
+
+        # initialize mask of info to False
+        R[:, :, :][Param.CELL_INFO] = False
+        R[:, :, :][Param.ORIENT_INFO] = False
+
+        print('Dimension of Result Matrix:', R.shape)
+        return R, shape_R
+    else:
+        raise ValueError(' Data array dimension is smaller than dimension of one parallelepiped. \n'
+                         ' Ensure which data is loaded or modify analysis parameter')
+
+
+def create_stats_matrix(shape):
+    """
+    Define a Matrix with the same structure of R parameters'
+    """
+    matrix = np.zeros(
+        np.prod(shape),
+        dtype=[(Stat.N_VALID_VALUES, np.int32),
+               (Stat.MIN, np.float16),
+               (Stat.MAX, np.float16),
+               (Stat.AVG, np.float16),
+               (Stat.STD, np.float16),
+               (Stat.SEM, np.float16),
+               (Stat.MODE, np.float16),
+               (Stat.MODALITY, np.float16),
+               ]
+    ).reshape(shape)
+    return matrix
+
+
+def stats_on_structured_data(input, param, w, invalid_value=None, invalid_par=None, _verb=False):
+    """
+    :param input: matrix with a structure like R
+    :param param: parameter selected
+    :param w: weights
+    :param invalid_value: the value that indicate an invalid elements; it's used to create the valid_mask
+    :param invalid_par: if passed, invalid_mask is created using invalid_value on R[invalid_par] instead on R[param]
+    :param _verb:
+    :return: structure with statistic results
+    """
+
+    if input is not None and param is not None:
+
+        # create mask of valid values (True if valid, False if invalid)
+        if invalid_value is not None:
+            if invalid_par is not None:
+                valid_mask = input[invalid_par] != invalid_value
+            else:
+                valid_mask = input[param] != invalid_value
+
+        # estimate statistics on selected values
+        results = statistics_base(input[param], w=w, valid_mask=valid_mask, _verb=_verb)
+        return results
+    else:
+        return None
+
+
+def statistics_base(x, w=None, valid_mask=None, invalid_value=None, _verb=False):
+    """
+    Evaluate statistics (see class Stat) from values ​​in M, using weights if passed.
+    :param x: is a numpy ndarray.
+    :param w: is a numpy ndarray (same dimension of m) with the weights of m values
+    :param valid_mask: ndarray of bool, same shapes of x. if passed, indicates which values use to evaluate the results
+    :param invalid_value: if valid_mask is not passed, it is evaluated by invalid_value (for ex: x != -1)
+    :param _verb: boolean
+    :return: stat: a dictionary containing the results
+    """
+    # todo: usare numpy mask? <-- se il fatto che comprimo le dimensioni romperà le scatole
+
+    if x is not None:
+        if w is not None:
+            _w = True
+            if _verb:
+                print(Bcolors.VERB)
+                print('* Statistic estimation with weighted average')
+        else:
+            w = np.ones_like(x)  # all weights are set as 1 like in an arithmetic average
+            _w = False
+            if _verb:
+                print('* Statistic estimation with arithmetic average')
+
         if _verb:
-            print(' - {} : {}'.format(p_name, param_values[i]))
-    if _verb: print('\n \n')
-    return parameters
+            print('matrix.shape: ', x.shape)
+            if _w:
+                print('weights.shape: ', w.shape)
+
+        # define dictionary of the results
+        results = dict()
+
+        # if valid_mask is passed (or created by invalid_value), only valid values are extracted
+        # else, all the values are selected
+        if valid_mask is None:
+            if invalid_value is None:
+                valid_mask = np.ones_like(x).astype(np.bool)
+            else:
+                valid_mask = (x != invalid_value)  # for example, -1
+
+        valid_values = x[valid_mask]  # 1-axis vector
+        valid_weights = w[valid_mask]  # 1-axis vector
+
+        if _verb:
+            print('Number of values selected: {}'.format(valid_values.shape))
+
+        # collect number of values, min and max
+        results[Stat.N_VALID_VALUES] = valid_values.shape[0]  # [0] because is a tuple
+        results[Stat.MIN] = valid_values.min()
+        results[Stat.MAX] = valid_values.max()
+
+        # collect mean, std, SEM, mode and median
+        results[Stat.AVG] = np.average(valid_values, axis=0, weights=valid_weights)
+        results[Stat.STD] = np.sqrt(
+            np.average((valid_values - results[Stat.AVG]) ** 2, axis=0, weights=valid_weights))
+        results[Stat.SEM] = scipy_stats.sem(valid_values)
+        results[Stat.MEDIAN] = np.median(valid_values)
+
+        # mode return an object with 2 attributes: mode and count, both as n-array, with n the iniput axis
+        results[Stat.MODE] = scipy_stats.mode(valid_values).mode[0]
+
+        # save modality of averaging
+        results[Stat.MODALITY] = Mode.ARITH if w is None else Mode.WEIGHT
+
+        if _verb:
+            print('Modality:, ', results[Stat.MODALITY])
+            print(' - avg:, ', results[Stat.AVG])
+            print(' - std:, ', results[Stat.STD])
+            print(Bcolors.ENDC)
+        return results
+
+    else:
+        if _verb:
+            print('ERROR: ' + statistics_base.__main__ + ' - Matrix passed is None')
+        return None
 
 
 def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=False):
@@ -394,105 +695,4 @@ def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
         else:
             strings.append(' - {0}: {1:0.2f}{2}'.format(getattr(Stat, att), stats[getattr(Stat, att)], ext))
     return strings
-
-
-def main(parser):
-    args = parser.parse_args()
-
-    # Extract input information
-    R_path = manage_path_argument(args.R_path)
-    parameter_filename = args.parameters_filename[0]
-
-    # extract filenames and folders
-    R_name = os.path.basename(R_path)
-    process_folder = os.path.basename(os.path.dirname(R_path))
-    base_path = os.path.dirname(os.path.dirname(R_path))
-    parameter_filepath = os.path.join(base_path, process_folder, parameter_filename)
-    R_prefix = R_name.split('.')[0]
-
-    # print some informations
-    print('\n\n*** Local Disarray estimation on R matrix ***\n')
-    print(' > R path:', R_path)
-    print(' > process folder:', process_folder)
-    print(' > base path:', base_path)
-    print(' > Parameter filename : ', parameter_filename)
-    print(' > Parameter filepath : ', parameter_filepath)
-    print()
-
-    # load R
-    R = np.load(R_path)
-
-    print('> R shape (r, c, z): ', R.shape)
-    print('\n> R_dtype: \n', R.dtype)
-
-    # extract parameters
-    param_names = ['roi_xy_pix',
-                   'px_size_xy', 'px_size_z',
-                   'threshold_on_cell_ratio',
-                   'local_disarray_xy_side',
-                   'local_disarray_z_side',
-                   'neighbours_lim']
-
-    #extract parameters
-    parameters = extract_parameters(parameter_filepath, param_names, _verb=True)
-
-    # estimate disarray
-    matrices_of_disarrays, matrix_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=False)
-
-    # save numpy file of both disarrays matrix (caculated with arithmetic and weighted average)
-    # estraggo lista degli attributi della classe Mode
-    # e scarto quelli che cominciao con '_' perchè saranno moduli
-    disarray_numpy_filename = dict()
-    for mode in [att for att in vars(Mode) if str(att)[0] is not '_' ]:
-        disarray_numpy_filename[mode] = save_in_numpy_file(
-                                                            matrices_of_disarrays[mode], R_prefix, shape_G,
-                                                            parameters, base_path, process_folder,
-                                                            data_prefix='MatrixDisarray_{}_'.format(mode))
-    # save numpy file of fractional anisotropy
-    fa_numpy_filename = save_in_numpy_file(
-                                            matrix_of_local_fa, R_prefix, shape_G, parameters,
-                                            base_path, process_folder, data_prefix='FA_local_')
-
-    print('\nMatrix of Disarray and Fractional Anisotropy saved in:')
-    print('>', os.path.join(base_path, process_folder))
-    print('with name: '
-          '\n >', disarray_numpy_filename[Mode.ARITH],
-          '\n >', disarray_numpy_filename[Mode.WEIGHT],
-          '\n >', fa_numpy_filename)
-
-    # evaluated statistics for both disarray (arithm and weighted)
-    disarray_ARITM_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.ARITH])
-    disarray_WEIGHT_stats = statistic_strings_of_valid_values(matrices_of_disarrays[Mode.WEIGHT],
-                                                              weights=matrix_of_local_fa)
-    fa_stats = statistic_strings_of_valid_values(matrix_of_local_fa)
-
-    # create disarray results strings
-    s1 = compile_results_strings(matrices_of_disarrays[Mode.ARITH], disarray_ARITM_stats,
-                                 fa_stats, mode=Mode.ARITH)
-    s2 = compile_results_strings(matrices_of_disarrays[Mode.WEIGHT], disarray_WEIGHT_stats,
-                                 fa_stats, mode=Mode.ARITH)
-    disarray_and_fa_results_strings = s1 + s2
-
-    # create disarray_results_strings.txt filepath
-    disarray_txt_results_filename = 'results_disarray_by_{}_G({},{},{})_limNeig{}.txt'.format(
-        R_prefix,
-        int(shape_G[0]), int(shape_G[1]), int(shape_G[2]),
-        int(parameters['neighbours_lim']))
-    disarray_txt_results_filepath = os.path.join(base_path, process_folder, disarray_txt_results_filename)
-
-    with open(disarray_txt_results_filepath, 'w') as txt:
-        for r in disarray_and_fa_results_strings:
-            print(r)
-            txt.write(r + '\n')
-
-# ================================ END MAIN () ================================================
-
-
-if __name__ == '__main__':
-    my_parser = argparse.ArgumentParser(description='Disarray analysis on Orientation vectors matrix R.npy')
-    my_parser.add_argument('-r', '--R-path', nargs='+',
-                           help='absolut path of 'R' numpy files containing the orientation vectors ', required=False)
-    my_parser.add_argument('-p', '--parameters-filename', nargs='+',
-                           help='filename of parameters.txt file (in the same folder of stack)', required=False)
-    main(my_parser)
 

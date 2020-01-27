@@ -261,8 +261,6 @@ def print_info(X, text='', _std=False, _return=False):
             print(l)
 
 
-
-
 def create_img_name_from_index(i, pre='', post='', tot_digits=5):
     if 0 <= i < 10 ** tot_digits - 1:
         if i == 0:
