@@ -44,12 +44,12 @@ from scipy import stats as scipy_stats
 from zetastitcher import InputFile
 
 # custom codes
-from source.custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
+from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     search_value_in_txt, pad_dimension, write_on_txt, Bcolors
-from source.custom_image_base_tool import normalize, print_info, plot_histogram, plot_map_and_save
-from source.disarray_tools import estimate_local_disarray, save_in_numpy_file, compile_results_strings, \
-    Param, Mode, Cell_Ratio_mode, statistics_base, create_R, structure_tensor_analysis_3d, sigma_for_uniform_resolution, \
-    downsample_2_zeta_resolution, CONST
+from custom_image_base_tool import normalize, print_info, plot_histogram, plot_map_and_save
+from disarray_tools import estimate_local_disarray, save_in_numpy_file, compile_results_strings, \
+    Param, Mode, Cell_Ratio_mode, statistics_base, create_R, structure_tensor_analysis_3d, \
+    sigma_for_uniform_resolution, downsample_2_zeta_resolution, CONST
 
 
 def block_analysis(parall, shape_P, parameters, sigma, _verbose):

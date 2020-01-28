@@ -48,8 +48,8 @@ from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_s
     search_value_in_txt, pad_dimension, write_on_txt, Bcolors
 from custom_image_base_tool import normalize, print_info, plot_histogram, plot_map_and_save
 from disarray_tools import estimate_local_disarray, save_in_numpy_file, compile_results_strings, \
-    Param, Mode, Cell_Ratio_mode, statistics_base, create_R, structure_tensor_analysis_3d, sigma_for_uniform_resolution, \
-    downsample_2_zeta_resolution, CONST
+    Param, Mode, Cell_Ratio_mode, statistics_base, create_R, structure_tensor_analysis_3d, \
+    sigma_for_uniform_resolution, downsample_2_zeta_resolution, CONST
 
 
 
@@ -155,80 +155,6 @@ def main(parser):
     # Load R
     R = np.load((R_filepath))
 
-    # 1 ----------------------------------------------------------------------------------------------------
-    # OPEN STACK
-
-    # # extract data - entire Volume: 'V'
-    # volume = InputFile(source_path).whole()
-    # # NB - in futuro va cambiata gestion assi
-    # volume = np.moveaxis(volume, 0, -1)  # (r, c, z) -> (z, y, x)
-    #
-    # # calculate dimension
-    # shape_V = np.array(volume.shape)
-    # pixel_for_slice = shape_V[0] * shape_V[1]
-    # total_voxel_V = pixel_for_slice * shape_V[2]
-    #
-    # mess_strings.append('\n\n*** Entire loaded Volume dimension:')
-    # mess_strings.append(' > Dimension if entire Volume : ({}, {}, {})'.format(shape_V[0], shape_V[1], shape_V[2]))
-    # mess_strings.append(' > Pixel for slice            : {}'.format(pixel_for_slice))
-    # mess_strings.append(' > Total voxel in Volume      : {}'.format(total_voxel_V))
-    #
-    # # extract list of math informations (as strings) about volume.npy variable
-    # info = print_info(volume, text='\nVolume informations:', _std=False, _return=True)
-    # mess_strings = mess_strings + info
-    #
-    # # print and add to .txt
-    # write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
-    # # clear list of strings
-    # mess_strings.clear()
-
-    # # 2 ----------------------------------------------------------------------------------------------------
-    # # CYCLE FOR BLOCKS EXTRACTION and ANALYSIS
-    # print('\n\n')
-    # print(Bcolors.OKBLUE + '*** Start Structure Tensor analysis... ' + Bcolors.ENDC)
-    #
-    # t_start = time.time()
-    #
-    # # create empty Result matrix
-    # R, shape_R = create_R(shape_V, shape_P)
-    #
-    # # real analysis on R
-    # R, count = iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose)
-    # mess_strings.append('\n > Orientation analysis completed.')
-    #
-    # # extract informations about the data analyzed
-    # block_with_cell = np.count_nonzero(R[Param.CELL_INFO])
-    # block_with_info = np.count_nonzero(R[Param.ORIENT_INFO])
-    # p_rejec_cell = 100 * (1 - (block_with_cell / count))
-    # p_rejec_info_tot = 100 * (1 - (block_with_info / count))
-    # p_rejec_info = 100 * (1 - (block_with_info / block_with_cell))
-    #
-    # # end analysis
-    # t_process = time.time() - t_start
-    #
-    # # create results strings
-    # mess_strings.append('\n\n*** Results of Orientation analysis:')
-    # mess_strings.append(' > Expected iterations : {}'.format(np.prod(shape_R)))
-    # mess_strings.append(' > total_ iteration : {}'.format(count))
-    # mess_strings.append(' > Time elapsed: {0:.3f} s'.format(t_process))
-    # mess_strings.append('\n > Total blocks: {}'.format(count))
-    # mess_strings.append(' > block with cell : {0}, rejected from total: {1} ({2:0.1f}%)'.format(
-    #     block_with_cell,
-    #     count - block_with_cell,
-    #     p_rejec_cell))
-    # mess_strings.append(' > block with gradient information : {}'.format(block_with_info))
-    # mess_strings.append(' > rejected from total: {0} ({1:0.1f}%)'.format(count - block_with_info, p_rejec_info_tot))
-    # mess_strings.append(' > rejected from block with cell: {0} ({1:0.1f}%)'.format(
-    #     block_with_cell - block_with_info, p_rejec_info))
-    #
-    # mess_strings.append('\n > R matrix created with shape: ({}, {}, {}) cells (zyx).'.format(
-    #     R.shape[0], R.shape[1], R.shape[2]))
-    #
-    # # print and write into .txt
-    # write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
-    # # clear list of strings
-    # mess_strings.clear()
-
     # 3 ----------------------------------------------------------------------------------------------------
     # Disarray and Fractional Anisotropy estimation
 
@@ -242,9 +168,9 @@ def main(parser):
     # SAVE update R (R is updated by estimate_local_disarray) in a NUMPY FILES
 
     # create result matrix (R) filename:
-    R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
+    # R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
     R_prefix = R_filename.split('.')[0]
-    R_filepath = os.path.join(base_path, process_folder, R_filename)
+    # R_filepath = os.path.join(base_path, process_folder, R_filename)
 
     # Save Results in R.npy
     np.save(R_filepath, R)
@@ -263,7 +189,7 @@ def main(parser):
     # and get their filenames
 
     # [estraggo lista degli attributi della classe Mode
-    # e scarto quelli che cominciano con '_' perchè saranno moduli]
+    # e scarto quelli che cominciano con '_' perche' saranno moduli]
     disarray_np_filename = dict()
     for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
         disarray_np_filename[getattr(Mode, mode)] = save_in_numpy_file(
