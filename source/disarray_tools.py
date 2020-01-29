@@ -123,16 +123,18 @@ def sigma_for_uniform_resolution(FWHM_xy, FWHM_z, px_size_xy):
     return sigma_s / px_size_xy
 
 
-def check_in_upper_semisphere(v):
-    # if versor in in y < 0 semisphere, take versor with opposite direction
-    if v[1] >= 0:
+def turn_in_upper_semisphere(v, axis=1):
+    # if versor v is in the "axis < 0" semisphere,
+    # turn the versor in the opposite direction
+    if v[axis] >= 0:
         v_rot = np.copy(v)
     else:
         v_rot = -np.copy(v)
     return v_rot
 
 
-def structure_tensor_analysis_3d(vol):
+def structure_tensor_analysis_3d(vol, _rotation=False):
+    # HERE I USE (X, Y, Z) convention
     #
     # Structure Tensor definita così:
     # ogni elemento (i,j) dello ST sarà la media della matrice IiIj
@@ -148,6 +150,8 @@ def structure_tensor_analysis_3d(vol):
     # OUTPUT: (eigenvalues, eigenvectors, shape_parameters)
     # eigenvalues and eigenvectors are oredered by descending eigenvalues values.
     # w[0] > w[1] >...
+    # NB : the column v[:,i] is the eigenvector corresponding to the eigenvalue w[i].
+    # if _rotation is True, each eigenvector are turned in the 'axis > 0' semisphere
 
     # Compute Gradient over x y z directions
     gx, gy, gz = np.gradient(vol)
@@ -181,10 +185,11 @@ def structure_tensor_analysis_3d(vol):
     w = np.copy(w[order])
     v = np.copy(v[:, order])
 
-    # sposta autovettori sulla semisfera con y > 0
-    ev_rotated = np.zeros_like(v)
-    for axis in range(v.shape[1]):
-        ev_rotated[:, axis] = check_in_upper_semisphere(v[:, axis])
+    if _rotation:
+        # sposta autovettori sulla semisfera con 'axis=1' > 0
+        ev_rotated = np.zeros_like(v)
+        for ev_idx in range(v.shape[1]):
+            ev_rotated[:, ev_idx] = turn_in_upper_semisphere(v[:, ev_idx], axis=1)
 
     # parameri di forma
     shape_parameters = dict()

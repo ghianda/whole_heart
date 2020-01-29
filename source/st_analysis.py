@@ -91,7 +91,7 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
         # - v : ordered eigenvectors
         #       the column v[:,i] is the eigenvector corresponding to the eigenvalue w[i].
         # - shape_parameters : dictionary con form parameters
-        w, v, shape_parameters = structure_tensor_analysis_3d(parall_down)
+        w, v, shape_parameters = structure_tensor_analysis_3d(parall_down, _rotation=False)
 
         # TODO CONTROLLO SUI PARAMETRI  DI FORMA
         if shape_parameters['strenght'] > 0:
