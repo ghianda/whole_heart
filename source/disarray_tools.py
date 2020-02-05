@@ -187,9 +187,11 @@ def structure_tensor_analysis_3d(vol, _rotation=False):
 
     if _rotation:
         # sposta autovettori sulla semisfera con 'axis=1' > 0
-        ev_rotated = np.zeros_like(v)
+        ev = np.zeros_like(v)
         for ev_idx in range(v.shape[1]):
-            ev_rotated[:, ev_idx] = turn_in_upper_semisphere(v[:, ev_idx], axis=1)
+            ev[:, ev_idx] = turn_in_upper_semisphere(v[:, ev_idx], axis=1)
+    else:
+        ev = np.copy(v)
 
     # parameri di forma
     shape_parameters = dict()
@@ -209,10 +211,7 @@ def structure_tensor_analysis_3d(vol, _rotation=False):
     # calcolo dimensionalità forma planare (w1 >> w2 .=. w3)
     shape_parameters['planar_dim'] = (w[0] - w[1]) / (w[0] + w[1])
 
-    return (w, ev_rotated, shape_parameters)
-
-
-
+    return (w, ev, shape_parameters)
 
 
 def create_R(shape_V, shape_P):

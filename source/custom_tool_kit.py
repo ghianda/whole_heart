@@ -155,6 +155,8 @@ def nextpow2(n):
 
 def magnitude(x):
     if x is None:
+        return None
+    if x < 0:
         return magnitude(abs(x))
     elif x == 0:
         return -1

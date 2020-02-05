@@ -57,7 +57,8 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
 
     # initialize empty dictionary and
     results = {}
-    there_is_cell = there_is_info = False
+    there_is_cell = False
+    there_is_info = False
 
     # check if this block contains cell with the selected methods:
     if parameters['mode_ratio'] == Cell_Ratio_mode.MEAN:
@@ -76,7 +77,8 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
 
         # save in R
         results['cell_ratio'] = cell_ratio
-        if _verbose: print('   cell_ratio :   ', cell_ratio)
+        if _verbose:
+            print('   cell_ratio :   ', cell_ratio)
 
         # blurring (for isotropic FWHM) and downsampling (for isotropic pixel size)
         # parall is int_8, parall_down is float_32
@@ -104,16 +106,17 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
             # save shape parameters
             for key in shape_parameters.keys():
                 results[key] = shape_parameters[key]
-
         else:
-            if _verbose: print('Block rejected ( no info in freq )')
+            if _verbose:
+                print('Block rejected ( no info in freq )')
     else:
-        if _verbose: print('Block rejected ( no cell )')
+        if _verbose:
+            print('Block rejected ( no cell )')
 
     return there_is_cell, there_is_info, results
 
 
-def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose):
+def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbose=False):
     # virtually dissect 'volume', perform on each block the analysis implemented in 'block_analysis',
     # and save the results inside R
 
@@ -128,7 +131,8 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
     print(' > Expected iterations : ', tot)
 
     for z in range(shape_R[2]):
-        if _verbose: print('\n\n')
+        if _verbose:
+            print('\n\n')
         print('{0:0.1f} % - z: {1:3}'.format(perc, z))
         for r in range(shape_R[0]):
             for c in range(shape_R[1]):
@@ -137,7 +141,8 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
                 slice_coord = create_slice_coordinate(start_coord, shape_P)
 
                 perc = 100 * (count / tot)
-                if _verbose: print('\n')
+                if _verbose:
+                    print('\n')
 
                 # save init info in R
                 R[r, c, z]['id_block'] = count
@@ -165,15 +170,16 @@ def iterate_orientation_analysis(volume, R, parameters, shape_R, shape_P, _verbo
                     if there_is_info: R[r, c, z]['orient_info'] = True
 
                     # save results in R
-                    if _verbose: print(' saved in R:  ')
+                    if _verbose:
+                        print(' saved in R:  ')
                     for key in results.keys():
                         R[r, c, z][key] = results[key]
                         if _verbose:
                             print(' > {} : {}'.format(key, R[r, c, z][key]))
 
                 else:
-                    if _verbose: print('   block rejected   ')
-                    print()
+                    if _verbose:
+                        print('   block rejected   ')
 
                 count += 1
     return R, count
