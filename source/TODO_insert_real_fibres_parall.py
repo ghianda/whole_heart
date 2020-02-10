@@ -4,6 +4,9 @@ import numpy as np
 import math
 import meshIO as meshIO
 
+import concurrent.futures
+import multiprocessing
+
 
 class Bcolors:
     VERB = '\033[95m'
@@ -14,6 +17,10 @@ class Bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+def get_thread_pool_executor(max_workers=multiprocessing.cpu_count() - 2):
+    return concurrent.futures.ThreadPoolExecutor(max_workers)
 
 
 def prepend_line(new_line, txt_path):
@@ -118,12 +125,8 @@ def main(parser):
     # Compile .lon with my data  --> LONG TASK (minutes...)
     # Iterates over the mesh centroids, computing the effective voxel location
     n_points = len(cpts)
-    magn = math.floor(math.log10(n_points))
     print('Start compiling the new .lon file... ')
     for i in range(n_points):
-        # print percent
-        if i % 10**(magn - 1) == 0:
-            print(' - {0:3.0f} %'.format(100 * i / n_points))
 
         # Sees which voxel we're in
         x = cpts_int[i, 0]  # Col = x
