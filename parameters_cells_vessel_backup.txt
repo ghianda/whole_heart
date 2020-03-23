@@ -24,8 +24,8 @@ roi_xy_pix = 128
 # define mode and theshold of tissue estimation inside block to allow analysis 
 # example: 'non_zero_ratio' and 0.8 (at least 80% of non zero voxel), 
 # or 'mean' and 10 (ldg mean inside block)
-# if mode-ratio = 0 --> 'non_zero_ratio' -> number of non zero voxel
-# if mode-ratio = 1 --> 'mean' -> ldg values
+# if moderatio = 0 --> 'non_zero_ratio' -> number of non zero voxel
+# if moderatio = 1 --> 'mean' -> ldg values
 mode_ratio = 1
 threshold_on_cell_ratio = 3  <-- to set manually if the stack is not full
 
