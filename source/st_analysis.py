@@ -40,10 +40,9 @@ import argparse
 # general
 import numpy as np
 
-from scipy import stats as scipy_stats
 from zetastitcher import InputFile
 
-# custom codes
+
 from custom_tool_kit import manage_path_argument, create_coord_by_iter, create_slice_coordinate, \
     search_value_in_txt, pad_dimension, write_on_txt, Bcolors
 from custom_image_base_tool import normalize, print_info, plot_histogram, plot_map_and_save

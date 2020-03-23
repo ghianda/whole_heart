@@ -605,63 +605,6 @@ def save_in_numpy_file(array, R_prefix, shape_G, parameters,
     return disarray_numpy_filename
 
 
-# # TODO DA RIMUOVERE E SOSTITUIRE CON STATISTICS
-# def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
-#
-#     # TODO HARDCODED
-#     _verb = True
-#
-#     if _verb:
-#         print(Bcolors.V)
-#         if weights is not None:
-#             print('* Statistic estimation with weighted average')
-#         else:
-#             print('* Statistic estimation with arithmetic average')
-#
-#     if _verb:
-#         print('matrix.shape: ', matrix.shape)
-#         if weights is not None: print('weights.shape: ', weights.shape)
-#
-#     stat = dict()
-#
-#     # extract valid values (it becomes 1-axis vector)
-#     # TODO -> FAKE ! QUI LA fa MI ARRIVA 0.0 SE IL BLOCCO ERA SENZA INFO! NON -1!  <<-------- - - - -    PAY ATTENTION
-#     valid_values = matrix[matrix != 0]
-#
-#     if weights is not None:
-#         # todo IDEM, SELEZIONARE PER BENE SOLO LE CELLE VALIDE (O GLI PASSO SOLO QUELLE??) pensarci !!! <<-------- - - - - -  - - - - -  -  -  -  -  -  -  -  -  PAY ATTENTION
-#         weights = np.ndarray.flatten(weights)  # to fit valid_values shape
-#     if _verb:
-#         print('valid values extracted')
-#
-#     if _verb:
-#         print('valid_values.shape: ', valid_values.shape)
-#         if weights is not None: print('weights.shape: ', weights.shape)
-#
-#     # collect shape, min and max
-#     stat['n_valid_values'] = valid_values.shape[0]
-#     stat['min'] = valid_values.min()
-#     stat['max'] = valid_values.max()
-#
-#     # collect avg and std
-#     if weights is not None:
-#         stat['avg'] = np.average(valid_values,
-#                                  axis=0,
-#                                  weights=weights)
-#         stat['std'] = np.sqrt(np.average((valid_values - stat['avg']) ** 2,
-#                                          axis=0,
-#                                          weights=weights))
-#     else:
-#         stat['avg'] = np.average(valid_values)
-#         stat['std'] = np.std(valid_values)
-#
-#     if _verb:
-#         print('avg:, ', stat['avg'])
-#         print('std:, ', stat['std'])
-#         print(Bcolors.ENDC)
-#     return stat
-
-
 def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
     """
 
