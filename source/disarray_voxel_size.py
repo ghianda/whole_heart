@@ -8,7 +8,7 @@ def main():
 	#
 	# =======================================================
 	# volume dimension in px
-	shape_V = np.array([2388, 1699, 1300])  # px, rcz
+	shape_V = np.array([3192, 2316, 1578])  # px, rcz
 
 	# array of resolutions in the R analysis
 	res_array_rcz = np.array([5.2, 5.2, 6])  # um
@@ -17,15 +17,15 @@ def main():
 	shape_P = np.array([26,26,22])
 
 	# dimension of the disarray matrix
-	shape_D = np.array([46,33,30])
+	shape_D = np.array([62,45,36])
 
 	# dimension of analysis grane of disarray
 	shape_G = np.array([2,2,2]).astype(np.uint32)
 
 	# Insert here disarray block sides (in pixel) in the plot: 
 	# (manually measured with a line in fiji)
-	r_dis = 25  # px
-	c_dis = 25  # px
+	r_dis = 19  # px
+	c_dis = 19  # px
 	# =======================================================
 
 

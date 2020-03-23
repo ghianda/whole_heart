@@ -2,9 +2,7 @@ import os
 import argparse
 import numpy as np
 import math
-
 import meshIO as meshIO
-from custom_tool_kit import manage_path_argument
 
 
 class Bcolors:
@@ -23,8 +21,11 @@ def prepend_line(new_line, txt_path):
     src = open(txt_path, 'r')
     lines = src.readlines()
 
+    # add 'end line' to the new string
+    new_line = new_line + '\n'
+
     # Here, we prepend the string we want to on first line
-    lines.insert(0, str(new_line + '\n'))
+    lines.insert(0, new_line)
     src.close()
 
     # We again open the file in WRITE mode to overwrite
@@ -37,15 +38,11 @@ def main(parser):
 
     # collect arguments
     args = parser.parse_args()
-    mesh_basename = manage_path_argument(args.mesh_basename)
-    R_filename = manage_path_argument(args.R_filename)
+    mesh_basename = args.mesh_basename[0]
+    R_filename = args.R_filename[0]
     _vpts = args.vpts  # bool
 
-    print(Bcolors.OKBLUE +
-          ' --------------------------------------' +
-          ' *** Filling mesh with real fibers  ...' +
-          '---------------------------------------' +
-          Bcolors.ENDC)
+    print(Bcolors.OKBLUE + '*** Filling mesh with real fibers ...' + Bcolors.ENDC)
 
     # current diretcory
     cwd = os.getcwd()
@@ -58,27 +55,30 @@ def main(parser):
     pts = meshIO.read_pts(basename=mesh_basepath, file_pts=None)
     print('- Mesh has', len(pts), 'nodes')
 
-    # Reads in mesh elems file
+    # Reads in mesh elems file 
     elems = meshIO.read_elems(basename=mesh_basepath, file_elem=None)
     print('- Mesh has', len(elems), 'elements')
 
-    # Reads in mesh lon file
-    # this is supposed to be the rule-based fibers
+    # Reads in mesh lon  (rule-based fibers)
     lon_rb = meshIO.read_lon(basename=mesh_basepath, file_lon=None)
     print('- Mesh has', len(lon_rb), 'fibres')
 
     # Reads in mesh centroids file
     cpts = meshIO.read_cpts(basename=mesh_basepath, file_cpts=None)
-    print('Mesh has', len(cpts), 'centroids')
+    print('- Mesh has', len(cpts), 'centroids')
 
     # Reads in vector file
     R = np.load(R_path)
     print('Successfully read {}'.format(R_filename))
     print('Fibres has shapes file (y,x,z):', R.shape)
 
-    # ectract eigenvector components
-    ev_index = 2
-    fibres_YXZ = R['ev'][..., ev_index]  # quiver = fibres
+    # extract eigenvector components
+    ev_index_orient = 2
+    ev_index_sheets = 1
+    ev_index_perp   = 0
+    fibres_YXZ = R['ev'][..., ev_index_orient]  # quiver = fibres
+    sheets_YXZ = R['ev'][..., ev_index_sheets]  # fibers sheets
+    perp_YXZ   = R['ev'][..., ev_index_perp]
 
     # Defines the voxel resolution of the data (ds388)
     data_ps_yxz = np.array([5.2, 5.2, 6])  # um
@@ -110,8 +110,8 @@ def main(parser):
     cpts_px.loc[:, 2] = cpts.loc[:, 2] / res_z  # depth = z
 
     # check dimension
-    print(' Shape of Fibres Matrix (YXZa): ', fibres_YXZ.shape)
-    print(' Max rounded coordinates of centroids (XYZ): ', np.floor(np.array(cpts.max())))
+    print('Shape of Fibres Matrix (YXZa): ', fibres_YXZ.shape)
+    print('Max rounded coordinates of centroids (XYZ): ', np.floor(np.array(cpts.max())))
 
     # evaluate the integer coordinates of centroids in the px space
     cpts_int = np.ndarray((len(cpts_px), 3)).astype(np.uint16)  # (n_points, 3)
@@ -120,68 +120,94 @@ def main(parser):
     cpts_int[:, 2] = np.floor(np.array(cpts_px.loc[:, 2]))  # z = depth
 
     # Defines a copy of the fibre file to edit
-    lon_mapped = lon_rb.copy()
+    # I will create three different .lon files, for fibers, sheets and perp
+    lon_real   = lon_rb.copy()
+    lon_sheets = lon_rb.copy()
+    lon_perp   = lon_rb.copy()
 
     # Compile .lon with my data  --> LONG TASK (minutes...)
     # Iterates over the mesh centroids, computing the effective voxel location
-    n_points = len(cpts)
-    ev_xyz = np.ndarray(3)  # temp array for the real fiber components
-    magn = math.floor(math.log10(n_points))
-    print('Start compiling the new .lon file... ')
+    n_points    = len(cpts)
+    magn        = math.floor(math.log10(n_points))
+    exception   = 0  # count exception while insert fibers
+    empty       = 0  # count mesh elements where there is empty real fiber 
+    ev_xyz      = np.ndarray(3)  # temp array of real fiber vector
+    fake_vector = np.array([0.01, 0.01, 0.01])  # fake sheet and perp if real-one is empty
+    # NB -> I will insert the rule-based fiber where the real-one is empty
+    print('*** Start compiling the new .lon files... ')
     for i in range(n_points):
-        # print percent
+        # print progress percent
         if i % 10**(magn - 1) == 0:
-            print(']')
-            print(' - {0:3.0f} % - ['.format(100 * i / n_points), end='')
-        if i % 10**(magn - 2) == 0:
-            print('=', end='')
+            print(' - {0:3.0f} %'.format(100 * i / n_points))
 
         # Sees which voxel we're in
         x = cpts_int[i, 0]  # Col = x
         y = cpts_int[i, 1]  # Row = y
         z = cpts_int[i, 2]  # Dep = z
 
-        # check if real fiber in this voxel is not empty
-        if np.any(fibres_YXZ[y, x, z]):
-            # collect real fiber components by the meatrix
-            ev_xyz[0] = fibres_YXZ[y, x, z, 1]
-            ev_xyz[1] = fibres_YXZ[y, x, z, 0]
-            ev_xyz[2] = fibres_YXZ[y, x, z, 2]
+        # check real fiber in this voxel
+        if ~np.any(fibres_YXZ[y, x, z]):
+            # real fiber is empty, i use the theoretical one
+            lon_real.loc[i]   = lon_rb.loc[i]
+            lon_sheets.loc[i] = fake_vector
+            lon_perp.loc[i]   = fake_vector
+            empty = empty + 1
 
-            # assign congruent direction of my real fibers
-            # using scalar product between theoretical and real fibers:
-            scalar = np.dot(ev_xyz, np.array(lon_rb.loc[i]))
-            if scalar < 0:
-                # change the direction of the real versor
-                ev_xyz = -ev_xyz
-
-            # insert data into real fibers lon file
+        else:
+            # insert real data
             try:
-                lon_mapped.loc[i] = ev_xyz
+                # collect real fiber components by the matrix
+                ev_xyz[0] = fibres_YXZ[y, x, z, 1]
+                ev_xyz[1] = fibres_YXZ[y, x, z, 0]
+                ev_xyz[2] = fibres_YXZ[y, x, z, 2]
+
+                # assign congruent direction of my real fibers
+       	        # by scalar product between theoretical and real fibers:
+                scalar = np.dot(ev_xyz, np.array(lon_rb.loc[i]))
+                if scalar < 0:
+                    # change the direction of the real versors
+                    ev_xyz              = np.negative(ev_xyz)
+                    sheets_YXZ[y, x, z] = np.negative(sheets_YXZ[y, x, z])
+                    perp_YXZ[y, x, z]   = np.negative(perp_YXZ[y, x, z])
+
+                # insert real components
+                lon_real.loc[i][[0, 1, 2]]   = np.array(ev_xyz)  # already XYZ
+                lon_sheets.loc[i][[0, 1, 2]] = sheets_YXZ[y, x, z][[1, 0, 2]]  # YXZ -> XYZ
+                lon_perp.loc[i][[0, 1, 2]]	 = perp_YXZ[y, x, z][[1, 0, 2]]  # YXZ -> XYZ
+
             except ValueError as e:
                 print(Bcolors.FAIL)
                 print('i={} - position: (x, y, z) = ({},{},{})'.format(i, x, y, z))
                 print('FAIL with ValueError: {}'.format(e))
                 print(Bcolors.ENDC)
+                exception = exception + 1
             except:
                 print(Bcolors.FAIL + 'FAIL with unknown error')
                 print('i={} - position: (x, y, z) = ({},{},{})'.format(i, x, y, z))
                 print(Bcolors.ENDC)
+                exception = exception + 1
 
-        # else:
-        # real fiber is empty, i use the theoretical one:
-        # but
-        # lon_mapped.loc[i] = lon_rb[i]  is already the same value
-        # because of "lon_mapped = lon_rb.copy()"
+    print('*** Successfully filled the real fibers on {} total elements, with:'.format(n_points))
+    print('-- {} elements where real fibers was empty -> filled with rule-based ones'.format(empty))
+    print('-- {} elements where the fibers isn\'t empty but an exception is occured while compile new .lon files'.format(exception))
 
-    print('Fibers ".lon" file compiling is finished.')
-
+    # Defines mapped lon filenames
+    real_lon_filename 	= mesh_basepath + '_realfibers'
+    sheets_lon_filename = mesh_basepath + '_sheets'
+    perp_lon_filename 	= mesh_basepath + '_perp'
+    
     # Writes-out mapped lon file
-    filled_lon_filename = mesh_basepath + '_filled'
-    print('Successfully fill the real fibers into {}.lon'.format(filled_lon_filename))
-    meshIO.write_lon(lonFilename=filled_lon_filename, lon=lon_mapped)
+    meshIO.write_lon(lonFilename=real_lon_filename, lon=lon_real)
+    meshIO.write_lon(lonFilename=sheets_lon_filename, lon=lon_sheets)
+    meshIO.write_lon(lonFilename=perp_lon_filename, lon=lon_perp)
 
+    print('new .lon files are saved as:')
+    print('-- {}.lon  -> fibers vectors (ev=2)'.format(real_lon_filename))
+    print('-- {}.lon  -> sheets vectors (ev=1)'.format(sheets_lon_filename))
+    print('-- {}.lon  -> perpendicular vectors (ev=0)'.format(perp_lon_filename))
+    
     # creation of .vpts and .vec file to meshalyzer visualization
+    # (only with the real fibers vector, not sheets and perp)
     if _vpts:
         print(Bcolors.OKBLUE + ' *** Creation of .vpts and .vec file for visualization...' + Bcolors.ENDC)
         # define new filenames of .vec and .vpts
@@ -203,8 +229,8 @@ def main(parser):
         print('Saved selected centroids in:\n -', vpts_filepath)
 
         # scale the number of vectors
-        scaled_vec = lon_mapped.loc[0:len(lon_mapped):scale]
-        print('Selected {} fibers vectors from {} total'.format(len(scaled_vec), len(lon_mapped)))
+        scaled_vec = lon_real.loc[0:len(lon_real):scale]
+        print('Selected {} fibers vectors from {} total'.format(len(scaled_vec), len(lon_real)))
 
         # fill the new .vec array adding a new column for color plot
         # [X  Y  Z  V] : X, Y, and Z are the vector components, V the scalar for the color
@@ -217,8 +243,7 @@ def main(parser):
 
 
 if __name__ == '__main__':
-    my_parser = argparse.ArgumentParser(
-        description='Read R.npy, cpts end rule-based .lon file, and create "lon_filled.lon" file with real fibers.')
+    my_parser = argparse.ArgumentParser(description='Extract real fibers, sheets and perpendicular vectors from R.npy and write into three different .lon files')
     my_parser.add_argument('-msh',
                            '--mesh-basename',
                            nargs='+',
