@@ -134,14 +134,14 @@ def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin
 ######################################################################
 ###########################   INPUT  #################################
 
-home_path = r'/home/francesco/LENS/Cervello/topo/200117_analisi_3.0_corteccia/normale'
-acquisition_folder = r'Stack_Corteccia2'
-stack_name = r'Stack_Corteccia_ctrl_z17_z46.tif'
+home_path = r'/home/francesco/LENS/Vasi/analisi_disarray_cellule/'
+acquisition_folder = r'3.0/SHR_VD_18weeks/DUP_Stack1'
+stack_name = r'DUP_Stack1.tif'
 ######################################################################
 
 
 base_path = os.path.join(home_path, acquisition_folder)
-parameter_filepath = os.path.join(base_path, 'parameters.txt')
+parameter_filepath = os.path.join(base_path, 'parameters_cells_vessel.txt')
 
 # extract parameters
 param_names = ['roi_xy_pix',
@@ -241,17 +241,19 @@ print_info(volume, text='Volume')
 # ATTENZIONE - CICLO PER SALVARE LE SLICE CON I QUIVER SUPERIMPOSED - SE (save_all_fig = True) DURA MOLTO TEMPO!
 
 
-# savings
-save_all_fig = False  # save every depth of R in 'img_format' format selected (time expensive)
-save_manual_fig = True  # save only manual selected depth in 'img_format' format selected (time expensive)
+# savings - choice only ONE mode!
+save_all_frames = False  # save every frame of tiff file with the corrispondent R depth vectors (VERY time expensive)
+save_manual_fig = False  # save only manual selected depth in 'img_format' format selected (time expensive)
+save_all_R_planes = True  # save one images for every R planes
+
 plot_img = True  # display on QT windows the image created
-plot_on_MIP = True
-save_on_MIP = True
+plot_on_MIP = False
+save_on_MIP = False
 
 # choice Z of R to plot
-if save_all_fig is False:
+if save_manual_fig:
     #     manual_z_R_selection = range(1, 65, 3)
-    manual_z_R_selection = [0]
+    manual_z_R_selection = [0,1,2,3,4]
 
 # choice what plot and what color_map
 color_to_use = COL_ZETA  # COL_XYANGLE, COL_PARAM, COL_ZETA
@@ -283,7 +285,7 @@ scale = 0.015  # val più piccolo, quiver + lunghi
 # ================================================================================================================
 
 # auto set parameters and advertising
-if save_all_fig:
+if save_all_frames:
     print(' ** ATTENTION : WAIT NOTIFICATION of END OF PROCESS \n')
 
 if image_white:
@@ -326,7 +328,7 @@ for z in range(shape_R[2]):
 # z_R --> in 'R' riferiment system
 # z_vol --> in 'volume' riferiment system
 
-if save_all_fig:
+if save_all_frames or save_all_R_planes:
     z_R_to_plot = range(shape_R[2])  # all z in R matrix
 else:
     z_R_to_plot = manual_z_R_selection  # manual selection
@@ -361,8 +363,8 @@ for z_R in z_R_to_plot:
     #     param_to_plot_z = Rf_z[z_R][param_for_plot]
     # valuer from param_to_plot_2d_list
     param_to_plot_z = param_to_plot_2d_list[z_R]
-    print('Plotted values from param_to_plot_2d_list[{}]:'.format(z_R))
-    print_info(param_to_plot_z)
+    # print('Plotted values from param_to_plot_2d_list[{}]:'.format(z_R))
+    # print_info(param_to_plot_z)
 
     if not plot_on_MIP:
         print('z_R: {}  ->  Rf_z[z_R][param_for_plot].shape: {}'.format(z_R, Rf_z[z_R][param_for_plot].shape))
@@ -384,16 +386,16 @@ for z_R in z_R_to_plot:
     colors_2d = float_to_color(values=color_values, color_map=color_map)
 
     # create range of real frames of volume to plot
-    if save_all_fig:
+    if save_all_frames:
         slices_to_plot = range(z_R * shape_P[2], (z_R + 1) * shape_P[2])  # plotta tutte le 8 slide per ogni cubetto
-    else:
+    elif save_all_R_planes or save_manual_fig:
         slices_to_plot = [((z_R + 1 / 2) * shape_P[2]).astype(int)]  # plotta solo la slide centrale
 
     if plot_on_MIP:
 
         print('     plot on MIP')
         MIP = normalize(np.max(volume, axis=2), dtype=np.uint8, max_value=100)
-        shape_fig = MIP.shape  # image shape
+        # shape_fig = MIP.shape  # image shape
 
         width = 5
         # prepare plot for save and/or plot image
@@ -419,16 +421,24 @@ for z_R in z_R_to_plot:
     else:
 
         for z_vol in slices_to_plot:
-            print('     selected slice in Volume : {} on {} \n'.format(z_vol, shape_V[2]))
-            # extract slice
+            # select z frame
             if _open_stack and plot_img:
+
+                # check depth
+                if z_vol >= shape_V[2]:
+                    # take the last one
+                    z_vol = shape_V[2] - 1
+
+                # extract frame
                 img_z = normalize(volume[:, :, z_vol], dtype=np.uint8, max_value=100)
+                print('     selected slice in Volume : {} on {} \n'.format(z_vol, shape_V[2]))
+
                 # if _equalize :
                 # TODO
             else:
                 img_z = None  # raise error
 
-            shape_fig = volume[:, :, z_vol].shape  # image shape
+            # shape_fig = volume[:, :, z_vol].shape  # image shape
 
             # ATTENZIONE   HO AGGIUNTO IL  MENO  ALLA  X   <-----------------------! ! ! !
 
@@ -465,7 +475,7 @@ for z_R in z_R_to_plot:
                 plt.show()
 
             # saving images?
-            if save_all_fig or save_manual_fig:
+            if save_all_frames or save_manual_fig or save_all_R_planes:
                 quiver_path = os.path.join(base_path, 'quiver_angle_{}_{}/'.
                                            format(img_format,
                                                   R_filename.split('.')[0]))  # create path where save images
