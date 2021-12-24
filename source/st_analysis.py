@@ -484,29 +484,24 @@ def main(parser):
             mess_strings.append('> {}'.format(hist_filepath))
 
     if _save_maps:
+
         mess_strings.append('\n> Disarray and FA plots are saved in:')
 
-        # disarray values normalization:
-        # disarrays are normalized together to safe the little differences between ARITM and WEIGH
-        # invalid values are NOT removed to preserve the matrix shape -> image
-        # invalid values (if present) become the minimum values
-        abs_max = np.max([mtrx_of_disarrays[Mode.ARITH].max(), mtrx_of_disarrays[Mode.WEIGHT].max()])
-        abs_min = np.min([mtrx_of_disarrays[Mode.ARITH].min(), mtrx_of_disarrays[Mode.WEIGHT].min()])
-        dis_norm_A = 255 * ((mtrx_of_disarrays[Mode.ARITH] - abs_min) / (abs_max - abs_min))
-        dis_norm_W = 255 * ((mtrx_of_disarrays[Mode.WEIGHT] - abs_min) / (abs_max - abs_min))
+        # generate plots path (for all the matrices)
+        dest_plots_path = os.path.join(base_path, process_folder, 'maps')
+        if not os.path.isdir(dest_plots_path): os.mkdir(dest_plots_path)
 
-        # def destination folder
-        dest_folder = os.path.join(base_path, process_folder)
+        # convert fractional anisotropy in percentual
+        mtrx_of_local_fa_perc = 100 * mtrx_of_local_fa
 
         # create and save frame for each data (disarrays and FA)
-        for (mtrx, np_fname) in zip([dis_norm_A, dis_norm_W, mtrx_of_local_fa],
-                                    [disarray_np_filename[Mode.ARITH],
-                                     disarray_np_filename[Mode.WEIGHT],
-                                     fa_np_filename]):
+        for (mtrx, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa_perc],
+                                    [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT], fa_np_filename]):
 
-            # plot frames and save they in a sub_folder (folder_path)
-            folder_path = plot_map_and_save(mtrx, np_fname, dest_folder, shape_G, shape_P)
-            mess_strings.append('> {}'.format(folder_path))
+            # plot frames and save they in a sub_folder (map_path)
+            map_path = plot_map_and_save(mtrx, np_fname, dest_plots_path,
+                                         parameters['px_size_xy'], parameters['px_size_z'], shape_G, shape_P)
+            mess_strings.append('> {}'.format(map_path))
 
     # print and write into .txt
     txt_results_filepath = os.path.join(base_path, process_folder, txt_results_filename)

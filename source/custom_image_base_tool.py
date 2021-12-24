@@ -14,75 +14,157 @@ class ImgFrmt:
     TIFF = 'TIFF'
     SVG = 'SVG'
 
+# deprecated - it saved with a wrong pixel size and normalized the values
+# def plot_map_and_save(matrix, np_filename, base_path, shape_G, shape_P, img_format=ImgFrmt.TIFF, _do_norm=False):
+#     """
+#     # plot LOCAL disarray (or AVERAGED FA) matrix as frames
+#
+#     # map_name = 'FA', or 'DISARRAY_ARIT' or 'DISARRAY_WEIGH'
+#     # es: plot_map_and_save(matrix_of_disarray, disarray_numpy_filename, True, IMG_TIFF)
+#     # es: plot_map_and_save(matrix_of_local_FA, FA_numpy_filename, True, IMG_TIFF)
+#
+#     :param matrix:
+#     :param np_filename:
+#     :param save_plot:
+#     :param img_format:
+#     :param _do_norm:
+#     :return:
+#     """
+#
+#     # create folder_path and filename from numpy_filename
+#     plot_folder_name = np_filename.split('.')[0]
+#     plot_filebasename = '_'.join(np_filename.split('.')[0].split('_')[0:2])
+#
+#     # create path where save images
+#     plot_path = os.path.join(base_path, plot_folder_name)
+#     # check if it exist
+#     if not os.path.isdir(plot_path):
+#         os.mkdir(plot_path)
+#
+#     # iteration on the z axis
+#     for i in range(0, matrix.shape[2]):
+#
+#         # extract data from the frame to plot
+#         if _do_norm:
+#             img = normalize(matrix[..., i])
+#         else:
+#             img = matrix[..., i]
+#
+#         # evaluate the depth in the volume space
+#         z_frame = int((i + 0.5) * shape_G[2] * shape_P[2])
+#         # create title of figure
+#         title = plot_filebasename + '. Grane: ({} x {} x {}) vectors; Depth_in_frame = {}'.format(
+#             int(shape_G[0]), int(shape_G[1]), int(shape_G[2]), z_frame)
+#
+#         # create plot
+#         fig = plt.figure(figsize=(15, 15))
+#         plt.imshow(img, cmap='gray')
+#         plt.title(title)
+#         # plt.show()
+#
+#         # create fname for this frame
+#         fname = plot_filebasename + '_z={}'.format(z_frame)
+#
+#         if img_format == ImgFrmt.SVG:
+#             # formato SVG -> puoi decidere dopo la risoluzione aprendolo con fiji
+#             fig.savefig(str(os.path.join(plot_path, fname) + '.svg'), format='svg',
+#                         dpi=1200, bbox_inches='tight', pad_inches=0)
+#
+#         elif img_format == ImgFrmt.EPS:
+#             # formato EPS buono per latex (latex lo converte automat. in pdf)
+#             fig.savefig(str(os.path.join(plot_path, fname) + '_black.eps'), format='eps', dpi=400,
+#                         bbox_inches='tight', pad_inches=0)
+#
+#         elif img_format == ImgFrmt.TIFF:
+#             png1 = BytesIO()
+#             fig.savefig(png1, format='png')
+#             png2 = Image.open(png1)
+#             png2.save((str(os.path.join(plot_path, fname) + '.tiff')))
+#             png1.close()
+#
+#         plt.close(fig)
+#
+#     return plot_path
 
-def plot_map_and_save(matrix, np_filename, base_path, shape_G, shape_P, img_format=ImgFrmt.TIFF, _do_norm=False):
-    """
-    # plot LOCAL disarray (or AVERAGED FA) matrix as frames
 
-    # map_name = 'FA', or 'DISARRAY_ARIT' or 'DISARRAY_WEIGH'
-    # es: plot_map_and_save(matrix_of_disarray, disarray_numpy_filename, True, IMG_TIFF)
-    # es: plot_map_and_save(matrix_of_local_FA, FA_numpy_filename, True, IMG_TIFF)
-    
-    :param matrix:
-    :param np_filename: 
-    :param save_plot: 
-    :param img_format: 
-    :param _do_norm: 
-    :return: 
-    """
+def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, shape_P, img_format=ImgFrmt.TIFF):
+    # evaluate pixel size of matrix disarray
+    ps_disarray = (res_xy * shape_P[0] * shape_G[0],
+                   res_xy * shape_P[1] * shape_G[1],
+                   res_z * shape_P[2] * shape_G[2])
 
     # create folder_path and filename from numpy_filename
-    plot_folder_name = np_filename.split('.')[0]
-    plot_filebasename = '_'.join(np_filename.split('.')[0].split('_')[0:2])
+    plot_folder_name = np_filename.split('.')[0] + '_Dps{0:0.0f}'.format(ps_disarray[0])
+    plot_filebasename = '_'.join(np_filename.split('.')[0].split('_')[0:2]) + '_Dps{0:0.0f}'.format(ps_disarray[0])
 
     # create path where save images
-    plot_path = os.path.join(base_path, plot_folder_name)
+    plot_path = os.path.join(dest_path, plot_folder_name)
     # check if it exist
     if not os.path.isdir(plot_path):
-        os.mkdir(plot_path)
+        os.mkdir(plot_path), print('Created ', plot_path)
+
+    # figures shape
+    w = matrix.shape[1]
+    h = matrix.shape[0]
 
     # iteration on the z axis
     for i in range(0, matrix.shape[2]):
 
-        # extract data from the frame to plot
-        if _do_norm:
-            img = normalize(matrix[..., i])
-        else:
-            img = matrix[..., i]
+        # extract the current plane to plot
+        plane = matrix[..., i]
+        print(plane.shape)
+        print('plane.max: ', plane.max(), '\nplane.min: ', plane.min())
 
-        # evaluate the depth in the volume space
-        z_frame = int((i + 0.5) * shape_G[2] * shape_P[2])
+        # estimate profondity of current plane in micron
+        z_um = int((i + 0.5) * shape_G[2] * shape_P[2] * res_z)
+
         # create title of figure
-        title = plot_filebasename + '. Grane: ({} x {} x {}) vectors; Depth_in_frame = {}'.format(
-            int(shape_G[0]), int(shape_G[1]), int(shape_G[2]), z_frame)
-
-        # create plot
-        fig = plt.figure(figsize=(15, 15))
-        plt.imshow(img, cmap='gray')
-        plt.title(title)
-        # plt.show()
+        title = plot_filebasename + '- ps: {0:4.0f} ({1} x {2} x {3}) vectors - z: {4} um.'.format(
+            ps_disarray[0], int(shape_G[0]), int(shape_G[1]), int(shape_G[2]), z_um)
 
         # create fname for this frame
-        fname = plot_filebasename + '_z={}'.format(z_frame)
+        fname = plot_filebasename + '_z={}um'.format(z_um)
 
-        if img_format == ImgFrmt.SVG:
-            # formato SVG -> puoi decidere dopo la risoluzione aprendolo con fiji
-            fig.savefig(str(os.path.join(plot_path, fname) + '.svg'), format='svg',
-                        dpi=1200, bbox_inches='tight', pad_inches=0)
+        if img_format == ImgFrmt.TIFF:
+            # prepare fig
+            fig = plt.figure(frameon=False)
+            fig.set_size_inches(w, h)
+            ax = plt.Axes(fig, [0., 0., 1., 1.])
+            ax.set_axis_off()
+            fig.add_axes(ax)
 
-        elif img_format == ImgFrmt.EPS:
-            # formato EPS buono per latex (latex lo converte automat. in pdf)
-            fig.savefig(str(os.path.join(plot_path, fname) + '_black.eps'), format='eps', dpi=400,
-                        bbox_inches='tight', pad_inches=0)
+            # plot data
+            ax.imshow(plane, cmap='gray', vmin=0, vmax=255)  # without normalization of the original values
 
-        elif img_format == ImgFrmt.TIFF:
-            png1 = BytesIO()
-            fig.savefig(png1, format='png')
-            png2 = Image.open(png1)
-            png2.save((str(os.path.join(plot_path, fname) + '.tiff')))
-            png1.close()
+            # save maps and close
+            fig.savefig(str(os.path.join(plot_path, fname) + '.tiff'), dpi=1)
 
-        plt.close(fig)
+        elif img_format in [ImgFrmt.SVG, ImgFrmt.EPS]:
+
+            # create plot
+            fig = plt.figure(figsize=(15, 15))
+            plt.imshow(plane, cmap='gray')
+            plt.title(title)
+
+            # save the fig
+            if img_format == ImgFrmt.SVG:
+                # formato SVG -> puoi decidere dopo la risoluzione aprendolo con fiji
+                fig.savefig(str(os.path.join(plot_path, fname) + '.svg'), format='svg',
+                            dpi=1200, bbox_inches='tight', pad_inches=0)
+
+            elif img_format == ImgFrmt.EPS:
+                # formato EPS buono per latex (latex lo converte automat. in pdf)
+                fig.savefig(str(os.path.join(plot_path, fname) + '_black.eps'), format='eps', dpi=400,
+                            bbox_inches='tight', pad_inches=0)
+
+        else:
+            print('[plot_map_and_save] - Wrong format passed for save plots.')
+
+        # close the fig
+        try:
+            plt.close(fig)
+        except(NameError, ValueError):
+            print('[plot_map_and_save] - There is no fig to close.')
 
     return plot_path
 
