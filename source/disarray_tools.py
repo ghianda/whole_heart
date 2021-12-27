@@ -547,32 +547,45 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     # alignment degree: module of the average vector.
                     # The averages estimated are both arithmetical and weighted with the FA
                     alignment = dict()
-                    alignment[Mode.ARITH] = np.linalg.norm(np.average(ord_coords, axis=0))
-                    alignment[Mode.WEIGHT] = np.linalg.norm(np.average(ord_coords, axis=0, weights=ord_fa))
+                    local_disarray = dict()
+
+                    # local disarray ARITHMETIC WAY
+                    try:
+                        alignment[Mode.ARITH]                     = np.linalg.norm(np.average(ord_coords, axis=0))
+                        local_disarray[Mode.ARITH]                = 100 * (1 - alignment[Mode.ARITH])
+                        matrices_of_disarray[Mode.ARITH][r, c, z] = local_disarray[Mode.ARITH]
+                        R[slice_coord][Param.LOCAL_DISARRAY]      = local_disarray[Mode.ARITH]
+                    except:
+                        alignment[Mode.ARITH]                     = "not evaluated"
+                        local_disarray[Mode.ARITH]                = -1
+                        matrices_of_disarray[Mode.ARITH][r, c, z] = -1
+                        R[slice_coord][Param.LOCAL_DISARRAY]      = -1
+
+                    # local disarray WEIGHTED with fractional anisotropy
+                    try:
+                        alignment[Mode.WEIGHT]                     = np.linalg.norm(np.average(ord_coords, axis=0, weights=ord_fa))
+                        local_disarray[Mode.WEIGHT]                = 100 * (1 - alignment[Mode.WEIGHT])
+                        matrices_of_disarray[Mode.WEIGHT][r, c, z] = local_disarray[Mode.WEIGHT]
+                        R[slice_coord][Param.LOCAL_DISARRAY_W]     = local_disarray[Mode.WEIGHT]
+                    except:
+                        alignment[Mode.WEIGHT]                     = "not evaluated"
+                        local_disarray[Mode.WEIGHT]                = -1
+                        matrices_of_disarray[Mode.WEIGHT][r, c, z] = -1
+                        R[slice_coord][Param.LOCAL_DISARRAY_W]     = -1
+
+                    # estimate average Fractional Anisotropy and save results into matrix of local disarray
+                    try:
+                        matrix_of_local_fa[r, c, z] = np.mean(ord_fa)
+                    except:
+                        matrix_of_local_fa[r, c, z] = -1
+
                     if _verb_deep:
                         print('alignment[Mode.ARITH] : ', alignment[Mode.ARITH])
                         print('alignment[Mode.WEIGHT]: ', alignment[Mode.WEIGHT])
-
-                    # define local_disarray degree
-                    local_disarray = dict()
-                    local_disarray[Mode.ARITH] = 100 * (1 - alignment[Mode.ARITH])
-                    local_disarray[Mode.WEIGHT] = 100 * (1 - alignment[Mode.WEIGHT])
-
-                    # save the disarray in each block of this portion (grane)
-                    # for future statistics and plot
-                    R[slice_coord][Param.LOCAL_DISARRAY] = local_disarray[Mode.ARITH]
-                    R[slice_coord][Param.LOCAL_DISARRAY_W] = local_disarray[Mode.WEIGHT]
-
-                    # estimate average Fractional Anisotropy
-                    # and save results into matrix of local disarray
-                    matrix_of_local_fa[r, c, z] = np.mean(ord_fa)
-                    matrices_of_disarray[Mode.ARITH][r, c, z] = local_disarray[Mode.ARITH]
-                    matrices_of_disarray[Mode.WEIGHT][r, c, z] = local_disarray[Mode.WEIGHT]
-                    if _verb_deep:
-                        print('saving.. rcz:({},{},{}):'.format(r, c, z))
                         print('local_disarray[Mode.ARITH] : ', local_disarray[Mode.ARITH])
                         print('local_disarray[Mode.WEIGHT]: ', local_disarray[Mode.WEIGHT])
                         print('mean Fractional Anisotropy : ', matrix_of_local_fa[r, c, z])
+                        print('saving.. rcz:({},{},{}):'.format(r, c, z))
 
                 else:
                     # Assign invalid value (-1)

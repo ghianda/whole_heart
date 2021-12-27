@@ -340,4 +340,3 @@ def seconds_to_min_sec(sec):
     else:
         h = int(sec // 3600)
         return h, int(sec // 60) - h * 60, int(sec % 60)
-

@@ -112,8 +112,8 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
 
         # extract the current plane to plot
         plane = matrix[..., i]
-        print(plane.shape)
-        print('plane.max: ', plane.max(), '\nplane.min: ', plane.min())
+        # print(plane.shape)
+        # print('plane.max: ', plane.max(), '\nplane.min: ', plane.min())
 
         # estimate profondity of current plane in micron
         z_um = int((i + 0.5) * shape_G[2] * shape_P[2] * res_z)

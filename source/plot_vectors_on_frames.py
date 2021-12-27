@@ -134,14 +134,62 @@ def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin
 ######################################################################
 ###########################   INPUT  #################################
 
-home_path = r'/home/francesco/LENS/Whole_Heart/eosina/'
-acquisition_folder = r'ds_mesoSPIM/test_analisi_stack_1'
-stack_name = r'stack_1_pw20.tiff'
-######################################################################
+home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/test/N_crop_x_stima_orientaz'
+acquisition_folder = r'mode_TH_1_FA_0.2'
+stack_name = r'N6_crop.tif'
 
+# ================================================================================================================
+# =============================== PLOT PARAMETERS ================================================================
+# ================================================================================================================
+
+# ATTENZIONE - CICLO PER SALVARE LE SLICE CON I QUIVER SUPERIMPOSED - SE (save_all_fig = True) DURA MOLTO TEMPO!
+
+# savings - choice only ONE mode!
+save_all_frames = False  # save every frame of tiff file with the corrispondent R depth vectors (VERY time expensive)
+save_manual_fig = False  # save only manual selected depth in 'img_format' format selected (time expensive)
+save_all_R_planes = True  # save one images for every R planes
+
+plot_img = True  # plot the tiff frame under the vectors
+plot_on_MIP = False
+save_on_MIP = False
+
+# choice Z of R to plot
+if save_manual_fig:
+    #     manual_z_R_selection = range(1, 65, 3)
+    manual_z_R_selection = [0,1,2,3,4]
+
+# choice what plot and what color_map
+color_to_use = COL_PARAM  # COL_XYANGLE, COL_PARAM, COL_ZETA
+param_for_plot = Param.FA  # choice from class Param - used if color_to_use = COL_PARAM
+color_map = cm.autumn
+_blur_par_to_plot = False  # gaussian blur on the color matrix
+
+# black or white background
+image_white = False  # True: LDG gray_R; False: LDS gray (normal)
+
+# equalize image - TODO
+# _equalize = True
+
+# image format to save (is 'save_fig' is selected):
+img_format = IMG_TIFF
+
+# Select index of eigenvector to plot (0: max, 2:min)
+ev_index = 2
+
+# quivers info to plot over images
+info_to_plot = 'fa'  # option: 'ids', 'cell_ratio','cilindrical_dim','planar_dim',
+#                                'strenght', 'none', 'local_disarray', 'ew', 'fa'
+
+# scale of quiver lenght
+# scale = 0.05 # val più piccolo, quiver + lunghi
+scale = 0.07  # val più piccolo, quiver + lunghi
+
+# ================================================================================================================
+# =============================== END PARAMETERS =================================================================
+# ================================================================================================================
 
 base_path = os.path.join(home_path, acquisition_folder)
-parameter_filepath = os.path.join(base_path, 'parameters_whole_mesoSPIM.txt')
+parameter_filepath = os.path.join(base_path, 'parameters_whole.txt')
 
 # extract parameters
 param_names = ['roi_xy_pix',
@@ -189,22 +237,17 @@ R = np.load(R_filepath)
 shape_R = R.shape
 print('shape_R: ', shape_R)
 
-
-# scalar parameter to plot as color if Z component is not selected
-param_for_plot = Param.FA  # choice from class Param
-# param_for_plot = 'local_disarray'  # when local disarray wil be estimated, use here
-
 # Normalize scalar parameter
 R[param_for_plot] = normalize(R[param_for_plot].copy(),
                               max_value=1.0,
                               dtype=R[param_for_plot].dtype)
 
 # OPEN STACK solo se servono le immagini
-_open_stack = True
+if plot_img or plot_on_MIP:
+    _open_stack = True
 #--------------------
 
 # OPEN STACK
-
 if _open_stack:
 
     t0 = time.time()
@@ -234,56 +277,6 @@ else:
 
 print_info(volume, text='Volume')
 
-# ================================================================================================================
-# =============================== PLOT PARAMETERS ================================================================
-# ================================================================================================================
-
-# ATTENZIONE - CICLO PER SALVARE LE SLICE CON I QUIVER SUPERIMPOSED - SE (save_all_fig = True) DURA MOLTO TEMPO!
-
-
-# savings - choice only ONE mode!
-save_all_frames = False  # save every frame of tiff file with the corrispondent R depth vectors (VERY time expensive)
-save_manual_fig = False  # save only manual selected depth in 'img_format' format selected (time expensive)
-save_all_R_planes = True  # save one images for every R planes
-
-plot_img = True  # display on QT windows the image created
-plot_on_MIP = False
-save_on_MIP = False
-
-# choice Z of R to plot
-if save_manual_fig:
-    #     manual_z_R_selection = range(1, 65, 3)
-    manual_z_R_selection = [0,1,2,3,4]
-
-# choice what plot and what color_map
-color_to_use = COL_ZETA  # COL_XYANGLE, COL_PARAM, COL_ZETA
-color_map = cm.autumn
-_blur_par_to_plot = False  # gaussian blur on the color matrix
-
-# black or white background
-image_white = False  # True: LDG gray_R; False: LDS gray (normal)
-
-# equalize image - TODO
-# _equalize = True
-
-# image format to save (is 'save_fig' is selected):
-img_format = IMG_TIFF
-
-# Select index of eigenvector to plot (0: max, 2:min)
-ev_index = 2
-
-# quivers info to plot over images
-info_to_plot = 'none'  # option: 'ids', 'cell_ratio','cilindrical_dim','planar_dim',
-#                                'strenght', 'none', 'local_disarray', 'ew'
-
-# scale of quiver lenght
-# scale = 0.05 # val più piccolo, quiver + lunghi
-scale = 0.06  # val più piccolo, quiver + lunghi
-
-# ================================================================================================================
-# =============================== END PARAMETERS =================================================================
-# ================================================================================================================
-
 # auto set parameters and advertising
 if save_all_frames:
     print(' ** ATTENTION : WAIT NOTIFICATION of END OF PROCESS \n')
@@ -305,9 +298,11 @@ orient_info_bool = R['orient_info']  # TODO -> pensare a 'mappatura' di grane 'v
 Rf_z = list()
 param_to_plot_2d_list = list()
 
+print('\nCollecting valid orientation vectors for each plane:')
 for z in range(shape_R[2]):
 
     # extract map of valid cells
+    print('z: {} -> valid_cells: {}'.format(z, R[:, :, z][orient_info_bool[:, :, z]].shape[0]))
     Rf_z.append(R[:, :, z][orient_info_bool[:, :, z]])  # R[allR, allrC, Z][bool_map_of_valid_blocks[allR, allC, Z]]
 
     # extract param_to_plt
@@ -329,16 +324,26 @@ for z in range(shape_R[2]):
 # z_vol --> in 'volume' riferiment system
 
 if save_all_frames or save_all_R_planes:
-    z_R_to_plot = range(shape_R[2])  # all z in R matrix
+    z_R_to_check = list(range(shape_R[2]))  # all z in R matrix
 else:
-    z_R_to_plot = manual_z_R_selection  # manual selection
+    z_R_to_check = list(manual_z_R_selection)  # manual selection
+
+# ensure there is at least one valid element to plot for each plane.
+# if not, that z is not inserted in the list 'z_R_to_plot'
+z_R_to_plot = list()
+for z_R in z_R_to_check:
+    valid_elem = R[:, :, z_R][orient_info_bool[:, :, z_R]].shape[0]
+    if valid_elem > 0:
+        z_R_to_plot.append(z_R)
+    else:
+        print('z_R = {} has {} valid elements -> discarted.'.format(z_R, valid_elem))
 
 # elaborate every frames of R selected for the plot
-count = 0
+print('\nStart to generate plot of each plane.')
 for z_R in z_R_to_plot:
 
     if not plot_on_MIP:
-        print(' - selected slice in R :      {} on {}'.format(z_R + 1, shape_R[2]))
+        print(' - selected slice in R :      {} on {} - '.format(z_R, shape_R[2]), end='')
 
     # extract position coordinate of every block
     init_coord = Rf_z[z_R]['init_coord']  # rcz=yxz
@@ -360,14 +365,14 @@ for z_R in z_R_to_plot:
     ids = Rf_z[z_R]['id_block']
 
     # valuer from R:
-    #     param_to_plot_z = Rf_z[z_R][param_for_plot]
+    # param_to_plot_z = Rf_z[z_R][param_for_plot]
     # valuer from param_to_plot_2d_list
     param_to_plot_z = param_to_plot_2d_list[z_R]
     # print('Plotted values from param_to_plot_2d_list[{}]:'.format(z_R))
     # print_info(param_to_plot_z)
 
     if not plot_on_MIP:
-        print('z_R: {}  ->  Rf_z[z_R][param_for_plot].shape: {}'.format(z_R, Rf_z[z_R][param_for_plot].shape))
+        print('->  vectors plotted: {}'.format(Rf_z[z_R][param_for_plot].shape[0]))
 
     # param_to_plot_z = chaos_normalizer(param_to_plot_z, isolated_value=-1, assign='max')
 
@@ -419,7 +424,7 @@ for z_R in z_R_to_plot:
             print("saved fig MIP in ", base_path)
 
     else:
-
+        # plot on the single frames
         for z_vol in slices_to_plot:
             # select z frame
             if _open_stack and plot_img:
@@ -459,7 +464,7 @@ for z_R in z_R_to_plot:
                     print(to_write.shape)
                     print(to_write)
                     print('-------------------------------')
-                if info_to_plot in ['cell_ratio', 'cilindrical_dim', 'planar_dim', 'strenght']:
+                if info_to_plot in ['cell_ratio', 'cilindrical_dim', 'planar_dim', 'strenght', 'fa']:
                     to_write = Rf_z[z_R][info_to_plot]
                     print('-------------------------------')
                     print(to_write.shape)
@@ -507,6 +512,5 @@ for z_R in z_R_to_plot:
                     png1.close()
 
                 plt.close(fig)
-                count += 1
 
 print('\n ** Process finished - OK')

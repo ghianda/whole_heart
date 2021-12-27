@@ -71,7 +71,7 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
               Bcolors.ENDC)
         cell_ratio = 0
 
-    if cell_ratio > parameters['threshold_on_cell_ratio']:
+    if cell_ratio >= parameters['threshold_on_cell_ratio']:
         # Orientation Analysis in this data block
         there_is_cell = True
 
@@ -96,7 +96,9 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
         w, v, shape_parameters = structure_tensor_analysis_3d(parall_down, _rotation=False)
 
         # TODO CONTROLLO SUI PARAMETRI  DI FORMA
-        if shape_parameters['strenght'] > 0:
+        # if shape_parameters['strenght'] > 0:
+        #     there_is_info = True
+        if shape_parameters['fa'] >= 0.25:
             there_is_info = True
 
             # save ordered eigenvectors
