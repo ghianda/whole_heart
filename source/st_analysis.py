@@ -92,13 +92,14 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
         # - w : descendent ordered eigenvalues
         # - v : ordered eigenvectors
         #       the column v[:,i] is the eigenvector corresponding to the eigenvalue w[i].
-        # - shape_parameters : dictionary con form parameters
+        # - shape_parameters : dictionary of shape parameters
         w, v, shape_parameters = structure_tensor_analysis_3d(parall_down, _rotation=False)
 
-        # TODO CONTROLLO SUI PARAMETRI  DI FORMA
-        # if shape_parameters['strenght'] > 0:
-        #     there_is_info = True
-        if shape_parameters['fa'] >= 0.25:
+        # TODO CONTROLLO SUI PARAMETRI  DI FORMA - mettere come parametri - adesso HARDCODED
+        ev2z = v[2, 2]  # comp. Z del 3th autovettore (comp Z autovett orientaz)
+        shape_parameters['sum_shapes']
+        # se np.abs(ev2z) > 0.975 uvol dire che vettore parallelo asse z (img troppo sfuocata sul pinao xy causa imaging)
+        if shape_parameters['fa'] >= 0.25 and np.abs(ev2z) < 0.975 and shape_parameters['sum_shapes'] > 0.65:
             there_is_info = True
 
             # save ordered eigenvectors

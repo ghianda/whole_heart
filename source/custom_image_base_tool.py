@@ -3,7 +3,8 @@ import numpy as np
 from PIL import Image
 from io import BytesIO
 import matplotlib.pyplot as plt
-from skimage.external.tifffile import imsave
+# from skimage.external.tifffile import imsave
+from tifffile import imsave as imsave
 
 from custom_tool_kit import magnitude
 
@@ -169,7 +170,7 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
     return plot_path
 
 
-def plot_histogram(x, xlabel='', ylabel='', bins=100, _save=True, filepath=None,
+def plot_histogram(x, xlabel='', ylabel='', xmin=0, xmax=100, bins=100, _save=True, filepath=None,
                    xlabelfontsize=20, ylabelfontsize=20, xticksfontsize=16, yticksfontsize=16):
     """
 
@@ -192,6 +193,7 @@ def plot_histogram(x, xlabel='', ylabel='', bins=100, _save=True, filepath=None,
     plt.xticks(fontsize=xticksfontsize)
     plt.yticks(fontsize=yticksfontsize)
     plt.hist(x, bins=bins)
+    plt.xlim((xmin, xmax))
 
     if _save:
         png1 = BytesIO()

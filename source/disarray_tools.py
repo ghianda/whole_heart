@@ -41,6 +41,7 @@ class Param:
     CILINDRICAL_DIM = 'cilindrical_dim'  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
     PLANAR_DIM = 'planar_dim'  # dimensionalità forma planare (w1 >> w2 .=. w3)
     FA = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+    SUM_SHAPES = 'sum_shapes'  # def as: (fa + planar_dim + cilindrical_dim)
     LOCAL_DISARRAY = 'local_disarray'   # local_disarray
     LOCAL_DISARRAY_W = 'local_disarray_w'  # local_disarray using FA as weight for the versors
 
@@ -211,6 +212,9 @@ def structure_tensor_analysis_3d(vol, _rotation=False):
     # calcolo dimensionalità forma planare (w1 >> w2 .=. w3)
     shape_parameters['planar_dim'] = (w[0] - w[1]) / (w[0] + w[1])
 
+    # parametro def da me che soma i fattori di forma
+    shape_parameters['sum_shapes'] = shape_parameters['planar_dim'] + shape_parameters['cilindrical_dim'] + shape_parameters['fa']
+
     return (w, ev, shape_parameters)
 
 
@@ -242,6 +246,7 @@ def create_R(shape_V, shape_P):
                    (Param.CILINDRICAL_DIM, np.float16),  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
                    (Param.PLANAR_DIM, np.float16),  # dimensionalità forma planare (w1 >> w2 .=. w3)
                    (Param.FA, np.float16),  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+                   (Param.SUM_SHAPES, np.float16),  # fa + planar_dim + cilindrical_dim
                    (Param.LOCAL_DISARRAY, np.float16),  # local_disarray
                    (Param.LOCAL_DISARRAY_W, np.float16)  # local_disarray using FA as weight for the versors
                    ]

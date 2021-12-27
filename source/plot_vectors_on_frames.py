@@ -58,6 +58,7 @@ class Param:
     CILINDRICAL_DIM = 'cilindrical_dim'  # dimensionalità forma cilindrica (w1 .=. w2 >> w3)
     PLANAR_DIM = 'planar_dim'  # dimensionalità forma planare (w1 >> w2 .=. w3)
     FA = 'fa'  # fractional anisotropy (0-> isotropic, 1-> max anisotropy
+    SUM_SHAPES = 'sum_shapes'  # def as: (fa + planar_dim + cilindrical_dim)
     LOCAL_DISARRAY = 'local_disarray'   # local_disarray
     LOCAL_DISARRAY_W = 'local_disarray_w'  # local_disarray using FA as weight for the versors
 
@@ -134,9 +135,10 @@ def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin
 ######################################################################
 ###########################   INPUT  #################################
 
-home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/test/N_crop_x_stima_orientaz'
-acquisition_folder = r'mode_TH_1_FA_0.2'
-stack_name = r'N6_crop.tif'
+home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/test/'
+acquisition_folder = r'3_N2_per_riprova_scarto_vettori/t2_SumShapes0.6_FA0.25_compZ_0.975'
+stack_name = r'N2_crop.tif'
+parameter_filename = 'parameters_TaskForce.txt'
 
 # ================================================================================================================
 # =============================== PLOT PARAMETERS ================================================================
@@ -159,10 +161,10 @@ if save_manual_fig:
     manual_z_R_selection = [0,1,2,3,4]
 
 # choice what plot and what color_map
-color_to_use = COL_PARAM  # COL_XYANGLE, COL_PARAM, COL_ZETA
-param_for_plot = Param.FA  # choice from class Param - used if color_to_use = COL_PARAM
-color_map = cm.autumn
-_blur_par_to_plot = False  # gaussian blur on the color matrix
+color_to_use = COL_ZETA  # COL_XYANGLE, COL_PARAM, COL_ZETA
+param_for_color = Param.FA  # choice from class Param -> [used only if color_to_use = COL_PARAM]
+color_map, cmap_used = cm.plasma, 'plasma'
+_blur_color_par = False  # gaussian blur on the color matrix
 
 # black or white background
 image_white = False  # True: LDG gray_R; False: LDS gray (normal)
@@ -177,8 +179,15 @@ img_format = IMG_TIFF
 ev_index = 2
 
 # quivers info to plot over images
-info_to_plot = 'fa'  # option: 'ids', 'cell_ratio','cilindrical_dim','planar_dim',
-#                                'strenght', 'none', 'local_disarray', 'ew', 'fa'
+info_to_plot = 'sum_shapes'  # option: 'ids', 'cell_ratio','cilindrical_dim','planar_dim',
+#                                'strenght', 'none', 'local_disarray', 'ew', 'fa', 'ev', 'evZerr',
+#                                'sum_shapes', 'ErrSumShapes'
+# NB: 'evZ' è la componente Z dell'autovettore orientazione
+# NB: evZerr p una misura di "scostamento" dal vettore unitario:
+# evZerr = 100 * (1 - evZ) -> così se evZ è 0.980, mi plotta 2.0, se 0.873, mi plotta 12.7
+# serve per vedere se vettore orientazione è troppo parallelo all'asse ottico <=> misura troppo sfuocata sul piano XY causa imaging
+# NB: sum_shapes = fa + cilindrical_dim + planar_dim
+# NB: ErrSumShapes = 10 * (1 - np.abs(sum_shapes))
 
 # scale of quiver lenght
 # scale = 0.05 # val più piccolo, quiver + lunghi
@@ -189,7 +198,7 @@ scale = 0.07  # val più piccolo, quiver + lunghi
 # ================================================================================================================
 
 base_path = os.path.join(home_path, acquisition_folder)
-parameter_filepath = os.path.join(base_path, 'parameters_whole.txt')
+parameter_filepath = os.path.join(base_path, parameter_filename)
 
 # extract parameters
 param_names = ['roi_xy_pix',
@@ -237,10 +246,11 @@ R = np.load(R_filepath)
 shape_R = R.shape
 print('shape_R: ', shape_R)
 
-# Normalize scalar parameter
-R[param_for_plot] = normalize(R[param_for_plot].copy(),
-                              max_value=1.0,
-                              dtype=R[param_for_plot].dtype)
+if color_to_use == COL_PARAM:
+    # Normalize scalar parameter
+    R[param_for_color] = normalize(R[param_for_color].copy(),
+                                   max_value=1.0,
+                                   dtype=R[param_for_color].dtype)
 
 # OPEN STACK solo se servono le immagini
 if plot_img or plot_on_MIP:
@@ -306,16 +316,15 @@ for z in range(shape_R[2]):
     Rf_z.append(R[:, :, z][orient_info_bool[:, :, z]])  # R[allR, allrC, Z][bool_map_of_valid_blocks[allR, allC, Z]]
 
     # extract param_to_plt
-    if _blur_par_to_plot:
-
+    if _blur_color_par:
         # extract values
-        par_matrix = R[:, :, z][param_for_plot]
+        par_matrix = R[:, :, z][param_for_color]
         # blurring
         par_blurred = ndimage.gaussian_filter(par_matrix.astype(np.float32), sigma=1.5).astype(np.float16)
         param_to_plot_2d_list.append(par_blurred[orient_info_bool[:, :, z]])
 
     else:
-        param_to_plot_2d_list.append(R[:, :, z][orient_info_bool[:, :, z]][param_for_plot])
+        param_to_plot_2d_list.append(R[:, :, z][orient_info_bool[:, :, z]][param_for_color])
 
 # =============================== CREATING DATA FOR PLOT () ===============================
 
@@ -356,7 +365,7 @@ for z_R in z_R_to_plot:
 
     # extract quiver component
     # E QUI NON SO SE SONO DAVVERO XYZ O YXZ
-    quiver_z = Rf_z[z_R]['ev'][:, :, ev_index]  # take all 'ev_index = (0, 1 or 2)' eigenvector
+    quiver_z = Rf_z[z_R]['ev'][:, :, ev_index]  # [all cells, all components, 'ev_index = (0, 1 or 2)']
     yq_z = quiver_z[:, 0]  # all y component
     xq_z = quiver_z[:, 1]  # all x component
     zq_z = quiver_z[:, 2]  # all z component
@@ -372,7 +381,7 @@ for z_R in z_R_to_plot:
     # print_info(param_to_plot_z)
 
     if not plot_on_MIP:
-        print('->  vectors plotted: {}'.format(Rf_z[z_R][param_for_plot].shape[0]))
+        print('->  vectors plotted: {}'.format(len(Rf_z[z_R])))
 
     # param_to_plot_z = chaos_normalizer(param_to_plot_z, isolated_value=-1, assign='max')
 
@@ -454,36 +463,45 @@ for z_R in z_R_to_plot:
                                                real=False, width=3,
                                                color_map=color_map, cmap_image=cmap_image)
 
-            # [if selected] plot block info over image for every vector
+            # [if selected] write selected info over the image for every vector
             if info_to_plot is not 'none':
-                if info_to_plot is 'ids':
+                if info_to_plot == 'evZ':
+                    to_write = Rf_z[z_R]['ev'][:, 2, ev_index]  # [all cells, z-comp, ev_index(default: 2th)]
+                if info_to_plot == 'evZerr':
+                    to_write = 100 * (1 - np.abs(Rf_z[z_R]['ev'][:, 2, ev_index])) # [all cells, z-comp, ev_index(default: 2th)]
+                if info_to_plot == 'ids':
                     to_write = ids
-                if info_to_plot is 'ew':
+                if info_to_plot == 'ew':
                     to_write = Rf_z[z_R][info_to_plot][:, 0, ev_index]  # [all_blocks, {è in riga}, indice_ew]
-                    print('-------------------------------')
-                    print(to_write.shape)
-                    print(to_write)
-                    print('-------------------------------')
-                if info_to_plot in ['cell_ratio', 'cilindrical_dim', 'planar_dim', 'strenght', 'fa']:
+                if info_to_plot == 'ErrSumShapes':
+                    to_write = 10 * (Rf_z[z_R]['sum_shapes'])
+                if info_to_plot in ['cell_ratio', 'cilindrical_dim', 'planar_dim', 'strenght', 'fa', 'sum_shapes']:
                     to_write = Rf_z[z_R][info_to_plot]
-                    print('-------------------------------')
-                    print(to_write.shape)
-                    print(to_write)
-                    print('-------------------------------')
+
+                # debug
+                print('-------------------------------')
+                print(to_write.shape)
+                print(to_write)
+                print('-------------------------------')
 
                 for val, pos in zip(to_write, init_coord):
                     r = pos[0][0]  # shape is (1, rcz)
                     c = pos[0][1]  # shape is (1, rcz)
-                    string = str(val) if info_to_plot is 'ids' else '{0:.1f}'.format(val)
+                    if info_to_plot == 'ids':
+                        string = str(val)
+                    elif info_to_plot == 'strenght':
+                        string = '{0:.0f}'.format(val)
+                    else:
+                        string = '{0:.1f}'.format(val)
                     plt.text(c, r, string, color='r', fontsize=10)
                     plt.title(R_filename + ' ' + info_to_plot + ' ' + R_filename)
                 plt.show()
 
             # saving images?
             if save_all_frames or save_manual_fig or save_all_R_planes:
-                quiver_path = os.path.join(base_path, 'quiver_angle_{}_{}/'.
-                                           format(img_format,
-                                                  R_filename.split('.')[0]))  # create path where save images
+                quiver_path = os.path.join(base_path, 'quiver_{}_{}_{}_{}/'.
+                                           format(info_to_plot, img_format,
+                                                  R_filename.split('.')[0], cmap_used))  # create path where save images
                 # check if it exist
                 if not os.path.isdir(quiver_path):
                     os.mkdir(quiver_path)
