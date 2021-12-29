@@ -1,0 +1,47 @@
+# =================================================================================
+# ======================[ read from st_analysis.py ]===============================
+# =================================================================================
+
+# PARAMETRI SISTEMA ACQUISIZIONE __________________________________________________
+
+# Parameters of Acquisition System:
+# Pixel Size (micro-meter, um)
+px_size_xy = 6	
+px_size_z = 6
+
+# FWHM (um)
+fwhm_xy = 4.5
+fwhm_z = 6.7
+
+# ANALISI ORIENTAZIONE 3D _________________________________________________________
+
+# define ROI dimension:
+# xy side (in pixel) of every block of data for orientation analysis
+# example:
+# roi_xy_pix = 16 -> 96 um
+roi_xy_pix = 16
+
+# define mode and theshold of tissue estimation inside block to allow analysis 
+# example: 'non_zero_ratio' and 0.8 (at least 80% of non zero voxel), 
+# or 'mean' and 10 (ldg mean inside block)
+# if mode-ratio = 0 --> 'non_zero_ratio' -> number of non zero voxel
+# if mode-ratio = 1 --> 'mean' -> ldg values
+mode_ratio = 0
+threshold_on_cell_ratio = 0.8  <-- to set manually if the stack is not full
+
+# =================================================================================
+# ====================[ read from local_disarray_by_R.py ]=========================
+# =================================================================================
+
+
+# Dimension of granes for Local Disarray analysis by Result Matrix R
+local_disarray_granes = 3 4 5 6 7 8 9
+
+# min percentage of neighbours blocks for evaluation of local_disarray value.
+neighbours_lim_perc = 80
+
+# =================================================================================
+
+
+
+
