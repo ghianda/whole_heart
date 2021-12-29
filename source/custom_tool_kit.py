@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import os
 
 
 # ===================================     CLASSES    ========================================
@@ -18,13 +19,32 @@ class Bcolors:
 
 # ===================================    METHODS    ================================================
 
+def create_fldr(path):
+    if not os.path.isdir(path):
+        os.makedirs(path)
 
-def extract_parameters(filename, param_names, _verb=False):
+
+
+def shape_P_from_parameters(parameters):
+    # Parameters of Acquisition System:
+    # ratio between pixel size in z and xy
+    ps_ratio = parameters['px_size_z'] / parameters['px_size_xy']
+
+    # analysis block dimension in z-axis
+    shape_P = np.array((int(parameters['roi_xy_pix']),
+                        int(parameters['roi_xy_pix']),
+                        int(parameters['roi_xy_pix'] / ps_ratio))).astype(np.int32)
+    return shape_P
+
+
+def extract_parameters(filepath, param_names, _verb=False):
     ''' read parameters values in filename.txt
     and save it in a dictionary'''
 
     # read values in txt
-    param_values = search_value_in_txt(filename, param_names)
+    param_values = search_value_in_txt(filepath=filepath, strings_to_search=param_names)
+
+    # todo search list in txt (key) -> (list)
 
     print('\n ***  Parameters : \n')
     # create dictionary of parameters

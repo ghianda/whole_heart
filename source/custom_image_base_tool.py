@@ -201,7 +201,7 @@ def plot_histogram(x, xlabel='', ylabel='', xmin=0, xmax=100, bins=100, _save=Tr
         png2 = Image.open(png1)
 
         # add tiff extension if missing
-        if filepath.split('.')[-1] != '.tiff' or filepath.split('.')[-1] != '.tif':
+        if filepath.split('.')[-1] != 'tiff' or filepath.split('.')[-1] != 'tif':
             filepath = filepath + '.tiff'
 
         png2.save(filepath)

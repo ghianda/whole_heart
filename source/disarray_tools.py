@@ -457,6 +457,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
     if _verb_deep: print(Bcolors.VERB)  # open colored session
     _i = 0
     for z in range(iterations[2]):
+        print('- iter: {0:3.0f} ; z = {1})'.format(_i, z))
         for r in range(iterations[0]):
             for c in range(iterations[1]):
                 if _verb_deep:
@@ -465,8 +466,6 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     print(Bcolors.WARNING +
                           'iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c) +
                           Bcolors.VERB)
-                else:
-                    print('iter: {0:3.0f} - (z, r, c): ({1}, {2} , {3})'.format(_i, z, r, c))
 
                 # grane extraction from R
                 start_coord = create_coord_by_iter(r, c, z, shape_G)
@@ -477,17 +476,18 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     print(grane.shape)
 
                 # N = Gy*Gx*Gz = n' of orientation blocks
-                # (gx, gy, gz) --> (N,)
+                # from shape (gx, gy, gz) --> to --> (N,)
                 grane_reshaped = np.reshape(grane, np.prod(grane.shape))
                 if _verb_deep:
                     print(' 1 - grane_reshaped -> ', end='')
                     print(grane_reshaped.shape)
 
-                n_valid_cells = np.count_nonzero(grane_reshaped[Param.CELL_INFO])
+                # TODO - BUG qui è CELL_INFO o FREQ_INFO??
+                n_valid_cells = np.count_nonzero(grane_reshaped[Param.ORIENT_INFO])
                 if _verb_deep:
                     print(' valid_cells --> ', n_valid_cells)
-                    print(' valid rows: -> ', grane_reshaped[Param.CELL_INFO])
-                    print(' grane_reshaped[\'cell_info\'].shape:', grane_reshaped[Param.CELL_INFO].shape)
+                    print(' valid rows: -> ', grane_reshaped[Param.ORIENT_INFO])
+                    print(' grane_reshaped[\'orient_info\'].shape:', grane_reshaped[Param.ORIENT_INFO].shape)
 
                 if n_valid_cells > parameters['neighbours_lim']:
 
@@ -497,7 +497,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                         print(' 2 - coord --> ', coord.shape)
                         print(coord)
 
-                    # extract fractional anisotropy (N)
+                    # extract the fractional anisotropy (shape:(N)) [ALL (for the moment)]
                     fa = grane_reshaped[Param.FA]
 
                     # for print components, lin.norm and FA of every versors (iv = index_of_versor)
@@ -508,8 +508,8 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                                   ' --> FA: ', fa[iv])
 
                     # select only versors and FAs from valid cells:
-                    valid_coords = coord[grane_reshaped[Param.CELL_INFO]]
-                    valid_fa = fa[grane_reshaped[Param.CELL_INFO]]
+                    valid_coords = coord[grane_reshaped[Param.ORIENT_INFO]]
+                    valid_fa = fa[grane_reshaped[Param.ORIENT_INFO]]
                     if _verb_deep:
                         print(' valid coords - ', valid_coords.shape, ' :')
                         print(valid_coords)
@@ -561,7 +561,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                         matrices_of_disarray[Mode.ARITH][r, c, z] = local_disarray[Mode.ARITH]
                         R[slice_coord][Param.LOCAL_DISARRAY]      = local_disarray[Mode.ARITH]
                     except:
-                        alignment[Mode.ARITH]                     = "not evaluated"
+                        alignment[Mode.ARITH]                     = -1
                         local_disarray[Mode.ARITH]                = -1
                         matrices_of_disarray[Mode.ARITH][r, c, z] = -1
                         R[slice_coord][Param.LOCAL_DISARRAY]      = -1
@@ -573,7 +573,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                         matrices_of_disarray[Mode.WEIGHT][r, c, z] = local_disarray[Mode.WEIGHT]
                         R[slice_coord][Param.LOCAL_DISARRAY_W]     = local_disarray[Mode.WEIGHT]
                     except:
-                        alignment[Mode.WEIGHT]                     = "not evaluated"
+                        alignment[Mode.WEIGHT]                     = -1
                         local_disarray[Mode.WEIGHT]                = -1
                         matrices_of_disarray[Mode.WEIGHT][r, c, z] = -1
                         R[slice_coord][Param.LOCAL_DISARRAY_W]     = -1
@@ -595,11 +595,11 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                 else:
                     # Assign invalid value (-1)
                     # (assume that isolated quiver have no disarray)
-                    R[slice_coord][Param.LOCAL_DISARRAY] = -1
-                    R[slice_coord][Param.LOCAL_DISARRAY_W] = -1
-                    matrices_of_disarray[Mode.ARITH][r, c, z] = -1
+                    R[slice_coord][Param.LOCAL_DISARRAY]       = -1
+                    R[slice_coord][Param.LOCAL_DISARRAY_W]     = -1
+                    matrices_of_disarray[Mode.ARITH][r, c, z]  = -1
                     matrices_of_disarray[Mode.WEIGHT][r, c, z] = -1
-                    matrix_of_local_fa[r, c, z] = -1
+                    matrix_of_local_fa[r, c, z]                = -1
 
                 # end iteration
                 _i += 1
@@ -621,63 +621,6 @@ def save_in_numpy_file(array, R_prefix, shape_G, parameters,
     disarray_numpy_filename = data_prefix + numpy_filename_endname
     np.save(os.path.join(base_path, process_folder, disarray_numpy_filename), array)
     return disarray_numpy_filename
-
-
-# # TODO DA RIMUOVERE E SOSTITUIRE CON STATISTICS
-# def statistic_strings_of_valid_values(matrix, weights=None, _verb=False):
-#
-#     # TODO HARDCODED
-#     _verb = True
-#
-#     if _verb:
-#         print(Bcolors.V)
-#         if weights is not None:
-#             print('* Statistic estimation with weighted average')
-#         else:
-#             print('* Statistic estimation with arithmetic average')
-#
-#     if _verb:
-#         print('matrix.shape: ', matrix.shape)
-#         if weights is not None: print('weights.shape: ', weights.shape)
-#
-#     stat = dict()
-#
-#     # extract valid values (it becomes 1-axis vector)
-#     # TODO -> FAKE ! QUI LA fa MI ARRIVA 0.0 SE IL BLOCCO ERA SENZA INFO! NON -1!  <<-------- - - - -    PAY ATTENTION
-#     valid_values = matrix[matrix != 0]
-#
-#     if weights is not None:
-#         # todo IDEM, SELEZIONARE PER BENE SOLO LE CELLE VALIDE (O GLI PASSO SOLO QUELLE??) pensarci !!! <<-------- - - - - -  - - - - -  -  -  -  -  -  -  -  -  PAY ATTENTION
-#         weights = np.ndarray.flatten(weights)  # to fit valid_values shape
-#     if _verb:
-#         print('valid values extracted')
-#
-#     if _verb:
-#         print('valid_values.shape: ', valid_values.shape)
-#         if weights is not None: print('weights.shape: ', weights.shape)
-#
-#     # collect shape, min and max
-#     stat['n_valid_values'] = valid_values.shape[0]
-#     stat['min'] = valid_values.min()
-#     stat['max'] = valid_values.max()
-#
-#     # collect avg and std
-#     if weights is not None:
-#         stat['avg'] = np.average(valid_values,
-#                                  axis=0,
-#                                  weights=weights)
-#         stat['std'] = np.sqrt(np.average((valid_values - stat['avg']) ** 2,
-#                                          axis=0,
-#                                          weights=weights))
-#     else:
-#         stat['avg'] = np.average(valid_values)
-#         stat['std'] = np.std(valid_values)
-#
-#     if _verb:
-#         print('avg:, ', stat['avg'])
-#         print('std:, ', stat['std'])
-#         print(Bcolors.ENDC)
-#     return stat
 
 
 def compile_results_strings(matrix, name, stats, mode='none_passed', ext=''):
