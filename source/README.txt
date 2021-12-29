@@ -1,19 +1,16 @@
 (venv_wh)
 
+adesso l'idea è:
+- st_anallysis.py -> legge parameters.txt, crea R, fa analisi orientazioni, e salva R in un file numpy
 
-> st_analysis.py -s path_tiff -p parameters_filename.txt
+- local_disarray_on_R.py -> legge parameters, legge R, e produce:
+   - matrix_of_disarray (ARITH)
+   - matrix_of_disarray (WEIGHT)
+   - fractional anisotropy (FA)
 
-fa l'analisi completa, orientazinoni, disarray, salvataggi ecc
+   e relative mappe, MIP, istogrammi ecc
 
+- plot_vectors_on_frame è hardcoded - serve per generare frames con i quiver sopra
 
-> disarray_on_R.py -r R_filepath -p parameters_filename
-
-bypassa l'analisi delle orientazioni e fa il disarray leggendo dalla matrice R in R_filepath
-
-
-TODO:
-> funz che salva il disarray come mappe tiff:
- --- senza normalizzare
- --- con la pixel size giusta
- (esempio: 1 pixel per ogni elemento della matrice disarray -
- tanto la pixel size del disarray la so facendo ps * grana_orient * grana_disarray)
+- st_analysis_on_all_samples itera  st_anallysis.py e (opzionale) local_disarray_on_R.py
+su ttti i campioni che sono dentro la basepath in input

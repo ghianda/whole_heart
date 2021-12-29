@@ -21,9 +21,10 @@ class Bcolors:
 
 def main(parser):
 
-    
-    args = parser.parse_args()
-    source_path = args.source_path[0]
+    # args
+    args               = parser.parse_args()
+    source_path        = args.source_path[0]
+    _disarray_analysis = args.disarray
 
     # list of subfolders
     samples = os.listdir(source_path)
@@ -33,7 +34,9 @@ def main(parser):
     print('- source_path : ', source_path)
     print('- list of samples:')
     for s in samples: 
-        print(s)
+        print('   -', s)
+    print('- [optional] Perform Disarray analysis: ', _disarray_analysis)
+    print()
 
     # run analisys on each sample
     for s in samples:
@@ -57,13 +60,31 @@ def main(parser):
             # perform analsys calling the sub-script
             os.system('python3 st_analysis.py -s {} -p {}'.format(tiffpath, par_fnames[0]))
             # subprocess.call(['secondary.py', '-sf', mask_path])
-    
-    
+
+            if _disarray_analysis is True:
+
+                # search file numpy R in the current path
+                R_fnames = [r for r in os.listdir(spath) if r.startswith('R_') and r.endswith('.npy')]
+
+                # check if there is only one R
+                if len(R_fnames) == 1:
+                    R_path = os.path.join(spath, R_fnames[0])
+
+                    # perform disarray analsys calling the sub-script
+                    os.system('python3 local_disarray_by_R.py -r {} -p {}'.format(R_path, par_fnames[0]))
+                    # subprocess.call(['secondary.py', '-sf', mask_path])
+
+    print(Bcolors.WARNING + '\n Finish to analyze all samples\n' + Bcolors.ENDC)
+    return None
 
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run st_analysys on all samples in the input path')
-    parser.add_argument('-s', '--source_path', nargs='+', required=False)
+    parser.add_argument('-s', '--source_path', nargs='+', required=False,
+                        help='Perform st_analysis on all samples in input path.')
+    parser.add_argument('-d', '--disarray', action='store_true', default=True, required=False,
+                        help='if passed, perform disarray analysis on all samples after the st_analysis.py')
+
     main(parser)
 
 

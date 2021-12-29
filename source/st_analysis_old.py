@@ -99,7 +99,7 @@ def block_analysis(parall, shape_P, parameters, sigma, _verbose):
         # TODO CONTROLLO SUI PARAMETRI  DI FORMA - mettere come parametri - adesso HARDCODED
         ev2z = v[2, 2]  # comp. Z del 3th autovettore (comp Z autovett orientaz)
         # se np.abs(ev2z) > 0.975 uvol dire che vettore parallelo asse z (img troppo sfuocata sul pinao xy causa imaging)
-        if shape_parameters['fa'] >= 0.25 and np.abs(ev2z) < 0.975 and shape_parameters['sum_shapes'] > 0.7:
+        if shape_parameters['fa'] >= 0.25 and np.abs(ev2z) < 0.975 and shape_parameters['sum_shapes'] > 0.65:
             there_is_info = True
 
             # save ordered eigenvectors
@@ -210,6 +210,9 @@ def main(parser):
     parameter_filename = args.parameters_filename[0]
     _verbose = args.verbose
     _deep_verbose = args.deep_verbose
+    _save_csv = args.csv
+    _save_hist = args.histogram
+    _save_maps = args.maps
     if _verbose:
         print(Bcolors.FAIL + ' *** VERBOSE MODE *** ' + Bcolors.ENDC)
     if _deep_verbose:
@@ -236,11 +239,17 @@ def main(parser):
     mess_strings.append(' > PREFERENCES:')
     mess_strings.append('  - _verbose {}'.format(_verbose))
     mess_strings.append('  - _deep_verbose {}'.format(_deep_verbose))
+    mess_strings.append('  - _save_csv {}'.format(_save_csv))
+    mess_strings.append('  - _save_hist {}'.format(_save_hist))
+    mess_strings.append('  - _save_maps {}'.format(_save_maps))
 
     # extract parameters
     param_names = ['roi_xy_pix',
                    'px_size_xy', 'px_size_z',
                    'mode_ratio', 'threshold_on_cell_ratio',
+                   'local_disarray_xy_side',
+                   'local_disarray_z_side',
+                   'neighbours_lim',
                    'fwhm_xy','fwhm_z']
 
     param_values = search_value_in_txt(parameter_filepath, param_names)
@@ -350,7 +359,7 @@ def main(parser):
     mess_strings.append(' > rejected from block with cell: {0} ({1:0.1f}%)'.format(
         block_with_cell - block_with_info, p_rejec_info))
 
-    mess_strings.append('\n > R matrix created with shape: ({}, {}, {}) cells (rcz).'.format(
+    mess_strings.append('\n > R matrix created with shape: ({}, {}, {}) cells (zyx).'.format(
         R.shape[0], R.shape[1], R.shape[2]))
 
     # print and write into .txt
@@ -359,10 +368,20 @@ def main(parser):
     mess_strings.clear()
 
     # 3 ----------------------------------------------------------------------------------------------------
-    # SAVE R in a NUMPY FILES, write info in the 'Orientation_info.txt'
+    # Disarray and Fractional Anisotropy estimation
+
+    # the function estimate local disarrays and fractional anisotropy and write these values also inside R
+    mtrx_of_disarrays, mtrx_of_local_fa, shape_G, R = estimate_local_disarray(R, parameters,
+                                                                              ev_index=2,
+                                                                              _verb=_verbose,
+                                                                              _verb_deep=_deep_verbose)
+
+    # 4a ----------------------------------------------------------------------------------------------------
+    # SAVE R (updated by estimate_local_disarray) in a NUMPY FILES
 
     # create result matrix (R) filename:
     R_filename = 'R_' + stack_prefix + '_' + str(int(parameters['roi_xy_pix'] * parameters['px_size_xy'])) + 'um.npy'
+    R_prefix = R_filename.split('.')[0]
     R_filepath = os.path.join(base_path, process_folder, R_filename)
 
     # Save Results in R.npy
@@ -371,13 +390,126 @@ def main(parser):
     mess_strings.append('> with name: {}'.format(R_filename))
     mess_strings.append('\n> Informations .txt file saved in: {}'.format(os.path.dirname(txt_info_path)))
     mess_strings.append('> with name: {}'.format(txt_info_filename))
-    mess_strings.append('\n')
 
     # print and write into .txt
     write_on_txt(mess_strings, txt_info_path, _print=True, mode='a')
     # clear list of strings
     mess_strings.clear()
 
+    # 4b ---------------------------------------------------------------------------------------------------
+    # SAVE DISARRAY AND COMPILE RESULTS TXT
+    #
+    # save numpy file of both disarrays matrix (calculated with arithmetic and weighted average)
+    # and get their filenames
+
+    # [estraggo lista degli attributi della classe Mode
+    # e scarto quelli che cominciano con '_' perchè saranno moduli]
+    disarray_np_filename = dict()
+    for mode in [att for att in vars(Mode) if str(att)[0] is not '_']:
+        disarray_np_filename[getattr(Mode, mode)] = save_in_numpy_file(
+                                                            mtrx_of_disarrays[getattr(Mode, mode)],
+                                                            R_prefix, shape_G,
+                                                            parameters, base_path, process_folder,
+                                                            data_prefix='MatrixDisarray_{}_'.format(mode))
+
+    # save numpy file of fractional anisotropy
+    fa_np_filename = save_in_numpy_file(mtrx_of_local_fa, R_prefix, shape_G, parameters,
+                                           base_path, process_folder, data_prefix='FA_local_')
+
+    mess_strings.append('\n> Matrix of Disarray and Fractional Anisotropy saved in:')
+    mess_strings.append('> {}'.format(os.path.join(base_path, process_folder)))
+    mess_strings.append('with name: \n > {}\n > {}\n > {}\n'.format(
+                                                                disarray_np_filename[Mode.ARITH],
+                                                                disarray_np_filename[Mode.WEIGHT],
+                                                                fa_np_filename))
+    mess_strings.append('\n')
+
+    # 5 ----------------------------------------------------------------------------------------------------
+    # STATISTICS ESTIMATION, HISTOGRAMS AND SAVINGS
+
+    # estimate statistics (see class Stat) of both disarray (arithm and weighted) and of fa
+    disarray_ARITM_stats = statistics_base(mtrx_of_disarrays[Mode.ARITH], invalid_value=CONST.INV)
+    disarray_WEIGHT_stats = statistics_base(mtrx_of_disarrays[Mode.WEIGHT],
+                                            w=mtrx_of_local_fa,
+                                            invalid_value=CONST.INV)
+    fa_stats = statistics_base(mtrx_of_local_fa, invalid_value=CONST.INV)
+
+    # compile and append statistical results strings
+    s1 = compile_results_strings(mtrx_of_disarrays[Mode.ARITH], 'Disarray', disarray_ARITM_stats, 'ARITH', '%')
+    s2 = compile_results_strings(mtrx_of_disarrays[Mode.WEIGHT], 'Disarray', disarray_WEIGHT_stats, 'WEIGHT', '%')
+    s3 = compile_results_strings(mtrx_of_local_fa, 'Fractional Anisotropy', fa_stats)
+    disarray_and_fa_results_strings = s1 + ['\n\n\n'] + s2 + ['\n\n\n'] + s3
+
+    # update mess strings
+    mess_strings = mess_strings + disarray_and_fa_results_strings
+
+    # create results.txt filename and filepath
+    txt_results_filename = 'results_disarray_by_{}_G({},{},{})_limNeig{}.txt'.format(
+        R_prefix,
+        int(shape_G[0]), int(shape_G[1]), int(shape_G[2]),
+        int(parameters['neighbours_lim']))
+
+    if _save_csv:
+        mess_strings.append('\n> CSV files are saved in:')
+
+        # save in csv bot disarray matrices and local_FA
+        for (mtrx, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa],
+                        [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT], fa_np_filename]):
+
+            # extract only valid values (different of INV = -1)
+            values = mtrx[mtrx != CONST.INV]
+
+            # create csv filepath and save the data
+            csv_filename = np_fname.split('.')[0] + '.csv'
+            csv_filepath = os.path.join(base_path, process_folder, csv_filename)
+            np.savetxt(csv_filepath, values, delimiter=",", fmt='%f')
+            mess_strings.append('> {}'.format(csv_filepath))
+
+    if _save_hist:
+        mess_strings.append('\n> Histogram plots are saved in:')
+
+        # zip values, description and filename
+        for (mtrx, lbl, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT],
+                                   mtrx_of_local_fa],
+                                  ['Local Disarray % (Arithmetic mean)', 'Local Disarray % (Weighted mean)',
+                                   'Local Fractional Anisotropy'],
+                                  [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT],
+                                   fa_np_filename]):
+
+            # extract only valid values (different of INV = -1)
+            values = mtrx[mtrx != CONST.INV]
+
+            # create path name
+            hist_fname = '.'.join(np_fname.split('.')[:-1]) + '.tiff'  # remove .npy and add .tiff
+            hist_filepath = os.path.join(base_path, process_folder, hist_fname)
+
+            # create histograms and save they as images
+            plot_histogram(values, xlabel=lbl, ylabel='Sub-Volume occurrence', filepath=hist_filepath)
+            mess_strings.append('> {}'.format(hist_filepath))
+
+    if _save_maps:
+
+        mess_strings.append('\n> Disarray and FA plots are saved in:')
+
+        # generate plots path (for all the matrices)
+        dest_plots_path = os.path.join(base_path, process_folder, 'maps')
+        if not os.path.isdir(dest_plots_path): os.mkdir(dest_plots_path)
+
+        # convert fractional anisotropy in percentual
+        mtrx_of_local_fa_perc = 100 * mtrx_of_local_fa
+
+        # create and save frame for each data (disarrays and FA)
+        for (mtrx, np_fname) in zip([mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa_perc],
+                                    [disarray_np_filename[Mode.ARITH], disarray_np_filename[Mode.WEIGHT], fa_np_filename]):
+
+            # plot frames and save they in a sub_folder (map_path)
+            map_path = plot_map_and_save(mtrx, np_fname, dest_plots_path,
+                                         parameters['px_size_xy'], parameters['px_size_z'], shape_G, shape_P)
+            mess_strings.append('> {}'.format(map_path))
+
+    # print and write into .txt
+    txt_results_filepath = os.path.join(base_path, process_folder, txt_results_filename)
+    write_on_txt(mess_strings, txt_results_filepath, _print=True, mode='w')
 # =============================================== END MAIN () ================================================
 
 
@@ -393,7 +525,13 @@ if __name__ == '__main__':
     my_parser.add_argument('-v', action='store_true', default=False, dest='verbose',
                            help='print additional informations')
     my_parser.add_argument('-d', action='store_true', default=False, dest='deep_verbose',
-                           help='print a lot of informations - DEBUG MODE')
+                           help='[debug mode] - print a lot of additional data, points, values etc.')
+    my_parser.add_argument('-c', action='store_true', default=True, dest='csv',
+                           help='save numpy results also as CSV file')
+    my_parser.add_argument('-i', action='store_true', default=True, dest='histogram',
+                                                  help='save histograms of results as images')
+    my_parser.add_argument('-m', action='store_true', default=True, dest='maps',
+                                                  help='save maps of disarray and FA as images')
 
     main(my_parser)
     # ============================================== START  BY TERMINAL ======================================

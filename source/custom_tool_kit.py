@@ -92,6 +92,38 @@ def search_value_in_txt(filepath, strings_to_search):
     return values
 
 
+def collect_list_of_values_in_the_txt(filepath, keyword):
+    '''
+    search the keyword in the txt,
+    and collect all the values in the line starting with 'keyword'
+    '''
+
+    # scan lines to find which line start with 'keyword'
+    idx_line = None
+    with open(filepath, 'r') as f:
+        data = f.readlines()
+        for (i, line) in enumerate(data):
+            # collect the first word of the current line
+            try:
+                first_word_in_the_line = line.split()[0]  # line is a string with multiple words
+            except:
+                first_word_in_the_line = str(line)  # line is a single string
+            # check that word
+            if first_word_in_the_line == keyword:
+                idx_line = i  # we have found the index of the correct line
+                break
+
+    if idx_line is not None:
+        # collect the values on that line (after the keyword and the separator)
+        # example:
+        # 'keyword = val1 val2 val3' --> [val1, val2, val3]
+        values = [int(val) for val in data[idx_line].split()[2:]]
+        return values
+    else:
+        return 'NO_VALUES_FINDED'
+
+
+
 def manage_path_argument(source_path):
     """
     # manage input parameters:

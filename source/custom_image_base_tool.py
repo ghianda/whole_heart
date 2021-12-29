@@ -88,7 +88,9 @@ class ImgFrmt:
 #     return plot_path
 
 
-def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, shape_P, img_format=ImgFrmt.TIFF):
+def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, shape_P,
+                      _save_MIP=False, img_format=ImgFrmt.TIFF):
+
     # evaluate pixel size of matrix disarray
     ps_disarray = (res_xy * shape_P[0] * shape_G[0],
                    res_xy * shape_P[1] * shape_G[1],
@@ -99,10 +101,10 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
     plot_filebasename = '_'.join(np_filename.split('.')[0].split('_')[0:2]) + '_Dps{0:0.0f}'.format(ps_disarray[0])
 
     # create path where save images
-    plot_path = os.path.join(dest_path, plot_folder_name)
+    map_plot_path = os.path.join(dest_path, plot_folder_name)
     # check if it exist
-    if not os.path.isdir(plot_path):
-        os.mkdir(plot_path), print('Created ', plot_path)
+    if not os.path.isdir(map_plot_path):
+        os.mkdir(map_plot_path), print('Created ', map_plot_path)
 
     # figures shape
     w = matrix.shape[1]
@@ -138,7 +140,7 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
             ax.imshow(plane, cmap='gray', vmin=0, vmax=255)  # without normalization of the original values
 
             # save maps and close
-            fig.savefig(str(os.path.join(plot_path, fname) + '.tiff'), dpi=1)
+            fig.savefig(str(os.path.join(map_plot_path, fname) + '.tiff'), dpi=1)
 
         elif img_format in [ImgFrmt.SVG, ImgFrmt.EPS]:
 
@@ -150,12 +152,12 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
             # save the fig
             if img_format == ImgFrmt.SVG:
                 # formato SVG -> puoi decidere dopo la risoluzione aprendolo con fiji
-                fig.savefig(str(os.path.join(plot_path, fname) + '.svg'), format='svg',
+                fig.savefig(str(os.path.join(map_plot_path, fname) + '.svg'), format='svg',
                             dpi=1200, bbox_inches='tight', pad_inches=0)
 
             elif img_format == ImgFrmt.EPS:
                 # formato EPS buono per latex (latex lo converte automat. in pdf)
-                fig.savefig(str(os.path.join(plot_path, fname) + '_black.eps'), format='eps', dpi=400,
+                fig.savefig(str(os.path.join(map_plot_path, fname) + '_black.eps'), format='eps', dpi=400,
                             bbox_inches='tight', pad_inches=0)
 
         else:
@@ -167,7 +169,29 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
         except(NameError, ValueError):
             print('[plot_map_and_save] - There is no fig to close.')
 
-    return plot_path
+    # save the MIP in tiff
+    if _save_MIP:
+
+        # path of the mip
+        mip_fname = str('MIP_' + plot_folder_name[7:] + '.tiff')
+        mip_path = str(os.path.join(os.path.dirname(map_plot_path), mip_fname))
+        # convert invalid values to zero
+        matrix[matrix < 0] = 0
+        MIP = np.max(matrix, axis=2)  # sum on Z (rcz)
+
+        # prepare a new fig
+        fig = plt.figure(frameon=False)
+        fig.set_size_inches(w, h)
+        ax = plt.Axes(fig, [0., 0., 1., 1.])
+        ax.set_axis_off()
+        fig.add_axes(ax)
+
+        # plot MIP
+        ax.imshow(MIP, cmap='gray', vmin=0, vmax=255)  # without normalization of the original values
+
+        # save MIP and close
+        fig.savefig(mip_path, dpi=1)
+    return map_plot_path
 
 
 def plot_histogram(x, xlabel='', ylabel='', xmin=0, xmax=100, bins=100, _save=True, filepath=None,

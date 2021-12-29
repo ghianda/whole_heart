@@ -5,7 +5,8 @@ from PIL import Image
 from io import BytesIO
 
 from scipy import ndimage
-from zetastitcher import InputFile
+# from zetastitcher import InputFile
+from tifffile import imread as imread
 
 from custom_tool_kit import create_coord_by_iter, all_words_in_txt, search_value_in_txt
 from custom_image_base_tool import print_info, normalize
@@ -83,7 +84,7 @@ class Bcolors:
 
 def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin='upper', title='',
                             color_values='r', scale_units='xy', scale=1., width=2, pivot='middle', real=False,
-                            color_map=None, cmap_image='gray'):
+                            color_map=None, cmap_image='gray', _show_plot=False):
     # xc, yc -> array of coordinates of TAIL of the Arrow
     # xq, yq -> array of components of quiver (Head of artow relative to tail)
     # real -> plot quiver with real xy dimension
@@ -128,16 +129,17 @@ def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin
     # image standard
     # plt.gca().invert_yaxis()
 
-    plt.show()
+    if _show_plot:
+        plt.show()
     return fig, plt
 
 
 def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name='',
-                           parameter_filename='parameters.txt', save_all_frames=False, save_manual_fig=False,
-                           save_all_R_planes=True, plot_img=True, plot_on_MIP=False, save_on_MIP=False,
+                           parameter_filename='parameters.txt', _save_all_frames=False, _save_manual_fig=False,
+                           _save_all_R_planes=True, _plot_img=True, _plot_on_MIP=False, _save_on_MIP=False,
                            manual_z_R_selection=None, color_to_use=COL_ZETA, param_for_color=None,
-                           color_map=cm.plasma, cmap_used='plasma', _blur_color_par=False, image_white=False,
-                           img_format=IMG_TIFF, ev_index=2, info_to_plot='none', scale=0.07):
+                           color_map=cm.plasma, cmap_used='plasma', _blur_color_par=False, _image_white=False,
+                           img_format=IMG_TIFF, ev_index=2, info_to_plot='none', scale=0.07, _show_plots=True):
 
     base_path = os.path.join(home_path, acquisition_folder)
     parameter_filepath = os.path.join(base_path, parameter_filename)
@@ -146,9 +148,6 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
     param_names = ['roi_xy_pix',
                    'px_size_xy', 'px_size_z',
                    'mode_ratio', 'threshold_on_cell_ratio',
-                   'local_disarray_xy_side',
-                   'local_disarray_z_side',
-                   'neighbours_lim',
                    'fwhm_xy', 'fwhm_z']
 
     param_values = search_value_in_txt(parameter_filepath, param_names)
@@ -195,8 +194,8 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
                                        dtype=R[param_for_color].dtype)
 
     # OPEN STACK solo se servono le immagini
-    if plot_img or plot_on_MIP:
-        _open_stack = True
+    # if plot_img or plot_on_MIP:
+    _open_stack = True if (_plot_img or _plot_on_MIP) else False
     # --------------------
 
     # OPEN STACK
@@ -205,10 +204,11 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
         t0 = time.time()
         source_path = os.path.join(base_path, stack_name)
 
-        infile = InputFile(source_path)
-        volume = infile.whole()
+        # infile = InputFile(source_path)
+        # volume = infile.whole()
+        volume = imread(source_path)
 
-        # NB - Attenzione gestione assi: InputFile: (z,y,x) ---> ME: (r,c,z)=(y,x,z) ---> move axis like above:
+        # NB - Attenzione gestione assi: InputFile/tifffile: (z,y,x) ---> ME: (r,c,z)=(y,x,z) ---> move axis like above:
         volume = np.moveaxis(volume, 0, -1)  # (z, y, x) -> (r, c, z)
 
         t1 = time.time()
@@ -230,10 +230,10 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
     print_info(volume, text='Volume')
 
     # auto set parameters and advertising
-    if save_all_frames:
+    if _save_all_frames:
         print(' ** ATTENTION : WAIT NOTIFICATION of END OF PROCESS \n')
 
-    if image_white:
+    if _image_white:
         cmap_image = 'gray_r'
     else:
         cmap_image = 'gray'
@@ -275,7 +275,7 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
     # z_R --> in 'R' riferiment system
     # z_vol --> in 'volume' riferiment system
 
-    if save_all_frames or save_all_R_planes:
+    if _save_all_frames or _save_all_R_planes:
         z_R_to_check = list(range(shape_R[2]))  # all z in R matrix
     else:
         z_R_to_check = list(manual_z_R_selection)  # manual selection
@@ -294,7 +294,7 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
     print('\nStart to generate plot of each plane.')
     for z_R in z_R_to_plot:
 
-        if not plot_on_MIP:
+        if not _plot_on_MIP:
             print(' - selected slice in R :      {} on {} - '.format(z_R, shape_R[2]), end='')
 
         # extract position coordinate of every block
@@ -323,7 +323,7 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
         # print('Plotted values from param_to_plot_2d_list[{}]:'.format(z_R))
         # print_info(param_to_plot_z)
 
-        if not plot_on_MIP:
+        if not _plot_on_MIP:
             print('->  vectors plotted: {}'.format(len(Rf_z[z_R])))
 
         # param_to_plot_z = chaos_normalizer(param_to_plot_z, isolated_value=-1, assign='max')
@@ -343,12 +343,12 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
         colors_2d = float_to_color(values=color_values, color_map=color_map)
 
         # create range of real frames of volume to plot
-        if save_all_frames:
+        if _save_all_frames:
             slices_to_plot = range(z_R * shape_P[2], (z_R + 1) * shape_P[2])  # plotta tutte le 8 slide per ogni cubetto
-        elif save_all_R_planes or save_manual_fig:
+        elif _save_all_R_planes or _save_manual_fig:
             slices_to_plot = [((z_R + 1 / 2) * shape_P[2]).astype(int)]  # plotta solo la slide centrale
 
-        if plot_on_MIP:
+        if _plot_on_MIP:
 
             print('     plot on MIP')
             MIP = normalize(np.max(volume, axis=2), dtype=np.uint8, max_value=100)
@@ -356,14 +356,16 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
 
             width = 5
             # prepare plot for save and/or plot image
-            fig, plt = plot_quiver_2d_for_save(xc_z, yc_z, -xq_z, yq_z, color_values=color_values, img=MIP,
-                                               title='MIP - ev: {0}th'.format(ev_index),
-                                               scale_units='xy', scale=scale, pivot='middle',
-                                               real=False, width=width,
-                                               color_map=color_map, cmap_image=cmap_image)
-            plt.show()
+            fig, mip_plot = plot_quiver_2d_for_save(xc_z, yc_z, -xq_z, yq_z, color_values=color_values, img=MIP,
+                                                    title='MIP - ev: {0}th'.format(ev_index),
+                                                    scale_units='xy', scale=scale, pivot='middle',
+                                                    real=False, width=width,
+                                                    color_map=color_map, cmap_image=cmap_image,
+                                                    _show_plot=_show_plots)
+            if _show_plots:
+                mip_plot.show()
 
-            if save_on_MIP:
+            if _save_on_MIP:
                 # TIFF
                 # (1) save the image in memory in PNG format
                 png1 = BytesIO()
@@ -379,7 +381,7 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
             # plot on the single frames
             for z_vol in slices_to_plot:
                 # select z frame
-                if _open_stack and plot_img:
+                if _open_stack and _plot_img:
 
                     # check depth
                     if z_vol >= shape_V[2]:
@@ -400,14 +402,15 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
                 # ATTENZIONE   HO AGGIUNTO IL  MENO  ALLA  X   <-----------------------! ! ! !
 
                 # prepare plot for save and/or plot image
-                fig, plt = plot_quiver_2d_for_save(xc_z, yc_z, -xq_z, yq_z, color_values=color_values, img=img_z,
-                                                   title='R:{0} - Z:{1} - ev: {2}th'.format(z_R, z_vol, ev_index),
-                                                   scale_units='xy', scale=scale, pivot='middle',
-                                                   real=False, width=3,
-                                                   color_map=color_map, cmap_image=cmap_image)
+                fig, frame_plot = plot_quiver_2d_for_save(xc_z, yc_z, -xq_z, yq_z, color_values=color_values, img=img_z,
+                                                          title='R:{0} - Z:{1} - ev: {2}th'.format(z_R, z_vol, ev_index),
+                                                          scale_units='xy', scale=scale, pivot='middle',
+                                                          real=False, width=3,
+                                                          color_map=color_map, cmap_image=cmap_image,
+                                                          _show_plot=_show_plots)
 
                 # [if selected] write selected info over the image for every vector
-                if info_to_plot is not 'none':
+                if info_to_plot != 'none':
                     if info_to_plot == 'evZ':
                         to_write = Rf_z[z_R]['ev'][:, 2, ev_index]  # [all cells, z-comp, ev_index(default: 2th)]
                     if info_to_plot == 'evZerr':
@@ -437,12 +440,16 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
                             string = '{0:.0f}'.format(val)
                         else:
                             string = '{0:.1f}'.format(val)
-                        plt.text(c, r, string, color='r', fontsize=10)
-                        plt.title(R_filename + ' ' + info_to_plot + ' ' + R_filename)
-                    plt.show()
+                        frame_plot.text(c, r, string, color='r', fontsize=10)
+                        frame_plot.title(R_filename + ' ' + info_to_plot + ' ' + R_filename)
+
+                    if _show_plots:
+                        frame_plot.show()
+                    else:
+                        frame_plot.close(fig)
 
                 # saving images?
-                if save_all_frames or save_manual_fig or save_all_R_planes:
+                if _save_all_frames or _save_manual_fig or _save_all_R_planes:
                     quiver_path = os.path.join(base_path, 'quiver_{}_{}_{}_{}/'.
                                                format(info_to_plot, img_format,
                                                       R_filename.split('.')[0],
@@ -474,7 +481,9 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
                         png2.save((str(quiver_path + img_name + '.tiff')))
                         png1.close()
 
-                    plt.close(fig)
+
+                    if not _show_plots:
+                        frame_plot.close(fig)
 
     print('\n ** Process finished - OK')
     return quiver_path
@@ -485,17 +494,18 @@ def plot_vectors_on_frames(home_path='/home', acquisition_folder='', stack_name=
 # ================================================================================================================
 
 # savings - choice only ONE mode!
-save_all_frames = False  # save every frame of tiff file with the corrispondent R depth vectors (VERY time expensive)
-save_manual_fig = False  # save only manual selected depth in 'img_format' format selected (time expensive)
-save_all_R_planes = True  # save one images for every R planes
+_save_all_frames   = False  # save every frame of tiff file with the corrispondent R depth vectors (VERY time expensive)
+_save_manual_fig   = False  # save only manual selected depth in 'img_format' format selected (time expensive)
+_save_all_R_planes = True  # save one images for every R planes
 
-plot_img = True  # plot the tiff frame under the vectors
-plot_on_MIP = False
-save_on_MIP = False
+_plot_img    = True  # plot the tiff frames under the vectors
+_plot_on_MIP = False
+_save_on_MIP = False
+_show_plots  = False  # display the plots on the screen
 
 # used only if save_manual_fig is True
 # manual_z_R_selection = range(1, 65, 3)
-manual_z_R_selection = [0,1,2,3,4]
+manual_z_R_selection = [0, 1, 2, 3, 4]
 
 # choice what plot and what color_map
 color_to_use = COL_ZETA  # COL_XYANGLE, COL_PARAM, COL_ZETA
@@ -507,7 +517,7 @@ _blur_color_par = False  # gaussian blur on the color matrix
 # _equalize = True
 
 # image background
-image_white = False  # True: LDG gray_R; False: LDS gray (normal)
+_image_white = False  # True: LDG gray_R; False: LDS gray (normal)
 
 # equalize image - TODO
 # _equalize = True
@@ -540,18 +550,19 @@ scale = 0.07  # val più piccolo, quiver + lunghi
 # ------------------------------------------------------- [  A  ]----------------------------------------------------------------
 # ################################################  COMMENT OR DECOMMENT ##########################################################
 # ########################################  USE THAT AS INPUT FOR ONLY ONE SAMPLE ################################################
-#
+
 # home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/Samples/analyzed/data/CTRL'
-# acquisition_folder = r'N20'
-# stack_name = r'N20.tif'
-# parameter_filename = 'parameters_TaskForce.txt'
-#
-# plot_vectors_on_frames(home_path=home_path, acquisition_folder=acquisition_folder, stack_name=stack_name,
-#                        parameter_filename=parameter_filename, save_all_frames=save_all_frames, save_manual_fig=save_manual_fig,
-#                        save_all_R_planes=save_all_R_planes, plot_img=plot_img, plot_on_MIP=plot_on_MIP, save_on_MIP=save_on_MIP,
-#                        manual_z_R_selection=manual_z_R_selection, color_to_use=color_to_use, param_for_color=param_for_color,
-#                        color_map=color_map, cmap_used=cmap_used, _blur_color_par=_blur_color_par, image_white=image_white,
-#                        img_format=img_format, ev_index=ev_index, info_to_plot=info_to_plot, scale=scale)
+home_path = r'/mnt/DATA_Frank/taskForce/devel/devel_st_analysis_4.0/samples/CTRL/'
+acquisition_folder = r'N11'
+stack_name = r'N11_crop.tif'
+parameter_filename = 'parameters_TaskForce.txt'
+
+plot_vectors_on_frames(home_path=home_path, acquisition_folder=acquisition_folder, stack_name=stack_name,
+                       parameter_filename=parameter_filename, _save_all_frames=_save_all_frames, _save_manual_fig=_save_manual_fig,
+                       _save_all_R_planes=_save_all_R_planes, _plot_img=_plot_img, _plot_on_MIP=_plot_on_MIP, _save_on_MIP=_save_on_MIP,
+                       manual_z_R_selection=manual_z_R_selection, color_to_use=color_to_use, param_for_color=param_for_color,
+                       color_map=color_map, cmap_used=cmap_used, _blur_color_par=_blur_color_par, _image_white=_image_white,
+                       img_format=img_format, ev_index=ev_index, info_to_plot=info_to_plot, scale=scale, _show_plots=_show_plots)
 # #################################################################################################################################
 
 
@@ -559,35 +570,35 @@ scale = 0.07  # val più piccolo, quiver + lunghi
 # ------------------------------------------------------- [  B  ]----------------------------------------------------------------
 ################################################  COMMENT OR DECOMMENT ##########################################################
 ########################################  USE THAT AS INPUT FOR LIST OF SAMPLES  ################################################
-
-home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/Samples/analyzed/data/{}'  # format(group)
-groups = ['CTRL', 'PATHOL']
-parameter_filename = 'parameters_TaskForce.txt'
-
-# start the plot_on_frames function for all samples of all groups
-for group in groups:
-    grouppath = home_path.format(group)
-
-    # list samples there
-    samplesnames = os.listdir(grouppath)
-    print('Start to prepare plots for the following samples:', samplesnames)
-
-    for sname in samplesnames:
-        acquisition_folder = r'{}'.format(sname)
-        stack_name = r'{}.tif'.format(sname)
-
-        print(acquisition_folder)
-        print(stack_name)
-
-        print(Bcolors.OKBLUE + 'Starting to plot vectors on frames for sample: {}'.format(sname) + Bcolors.ENDC)
-
-        try:
-            plot_vectors_on_frames(home_path=grouppath, acquisition_folder=acquisition_folder, stack_name=stack_name,
-                                   parameter_filename=parameter_filename, save_all_frames=save_all_frames, save_manual_fig=save_manual_fig,
-                                   save_all_R_planes=save_all_R_planes, plot_img=plot_img, plot_on_MIP=plot_on_MIP, save_on_MIP=save_on_MIP,
-                                   manual_z_R_selection=manual_z_R_selection, color_to_use=color_to_use, param_for_color=param_for_color,
-                                   color_map=color_map, cmap_used=cmap_used, _blur_color_par=_blur_color_par, image_white=image_white,
-                                   img_format=img_format, ev_index=ev_index, info_to_plot=info_to_plot, scale=scale)
-        except:
-            print(Bcolors.WARNING + 'something is wrong - plots not created. Skip to the next samples.' + Bcolors.ENDC)
-#################################################################################################################################
+#
+# home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/Samples/analyzed/data/{}'  # format(group)
+# groups = ['CTRL', 'PATHOL']
+# parameter_filename = 'parameters_TaskForce.txt'
+#
+# # start the plot_on_frames function for all samples of all groups
+# for group in groups:
+#     grouppath = home_path.format(group)
+#
+#     # list samples there
+#     samplesnames = os.listdir(grouppath)
+#     print('Start to prepare plots for the following samples:', samplesnames)
+#
+#     for sname in samplesnames:
+#         acquisition_folder = r'{}'.format(sname)
+#         stack_name = r'{}.tif'.format(sname)
+#
+#         print(acquisition_folder)
+#         print(stack_name)
+#
+#         print(Bcolors.OKBLUE + 'Starting to plot vectors on frames for sample: {}'.format(sname) + Bcolors.ENDC)
+#
+#         try:
+#             plot_vectors_on_frames(home_path=grouppath, acquisition_folder=acquisition_folder, stack_name=stack_name,
+#                                    parameter_filename=parameter_filename, save_all_frames=save_all_frames, save_manual_fig=save_manual_fig,
+#                                    save_all_R_planes=save_all_R_planes, plot_img=plot_img, plot_on_MIP=plot_on_MIP, save_on_MIP=save_on_MIP,
+#                                    manual_z_R_selection=manual_z_R_selection, color_to_use=color_to_use, param_for_color=param_for_color,
+#                                    color_map=color_map, cmap_used=cmap_used, _blur_color_par=_blur_color_par, image_white=image_white,
+#                                    img_format=img_format, ev_index=ev_index, info_to_plot=info_to_plot, scale=scale, _show_plots=_show_plots)
+#         except:
+#             print(Bcolors.WARNING + 'something is wrong - plots not created. Skip to the next samples.' + Bcolors.ENDC)
+# #################################################################################################################################
