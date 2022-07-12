@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 # from skimage.external.tifffile import imsave
 from tifffile import imsave as imsave
 
+import warnings
+
 from custom_tool_kit import magnitude
 
 
@@ -88,8 +90,12 @@ class ImgFrmt:
 #     return plot_path
 
 
+def nan_if(arr, value):
+    return np.where(arr == value, np.nan, arr)
+
+
 def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, shape_P,
-                      _save_MIP=False, img_format=ImgFrmt.TIFF):
+                      _save_MIP=False, _save_AVG=False, img_format=ImgFrmt.TIFF):
 
     # evaluate pixel size of matrix disarray
     ps_disarray = (res_xy * shape_P[0] * shape_G[0],
@@ -173,11 +179,13 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
     if _save_MIP:
 
         # path of the mip
-        mip_fname = str('MIP_' + plot_folder_name[7:] + '.tiff')
+        mip_fname = str('MIP_' + plot_folder_name + '.tiff')
         mip_path = str(os.path.join(os.path.dirname(map_plot_path), mip_fname))
-        # convert invalid values to zero
-        matrix[matrix < 0] = 0
-        MIP = np.max(matrix, axis=2)  # sum on Z (rcz)
+
+        # convert invalid values to zero (background = not analyzed)
+        matrix_with_zero = np.copy(matrix)
+        matrix_with_zero[matrix_with_zero < 0] = 0
+        MIP = np.max(matrix_with_zero, axis=2)  # sum on Z (rcz)
 
         # prepare a new fig
         fig = plt.figure(frameon=False)
@@ -191,6 +199,38 @@ def plot_map_and_save(matrix, np_filename, dest_path, res_xy, res_z, shape_G, sh
 
         # save MIP and close
         fig.savefig(mip_path, dpi=1)
+
+    # save the AVERAGE along z axis in tiff (excluding invalid elements == -1)
+    if _save_AVG:
+        # path of the AVG
+        avg_fname = str('AVG_' + plot_folder_name + '.tiff')
+        avg_path = str(os.path.join(os.path.dirname(map_plot_path), avg_fname))
+
+        # convert invalid values to NaN
+        matrix_with_nan = nan_if(matrix, -1)
+
+        # average along z axis (ignoring the warning about the column with all NaNs)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            AVG = np.nanmean(matrix_with_nan, axis=2)  # AVG on Z (rcz)
+
+        # if there is nan elements in the final average, convert to zero
+        AVG = np.nan_to_num(AVG)
+
+        # prepare a new fig
+        fig = plt.figure(frameon=False)
+        fig.set_size_inches(w, h)
+        ax = plt.Axes(fig, [0., 0., 1., 1.])
+        ax.set_axis_off()
+        fig.add_axes(ax)
+
+        # plot MIP
+        ax.imshow(AVG, cmap='gray', vmin=0, vmax=255)  # without normalization of the original values
+
+        # save AVG and close
+        fig.savefig(avg_path, dpi=1)
+
+
     return map_plot_path
 
 

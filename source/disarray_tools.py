@@ -482,7 +482,7 @@ def estimate_local_disarray(R, parameters, ev_index=2, _verb=True, _verb_deep=Fa
                     print(' 1 - grane_reshaped -> ', end='')
                     print(grane_reshaped.shape)
 
-                # TODO - BUG qui è CELL_INFO o FREQ_INFO??
+                # TODO - BUG corretto: qui è ORIENT_INFO non CELL_INFO !
                 n_valid_cells = np.count_nonzero(grane_reshaped[Param.ORIENT_INFO])
                 if _verb_deep:
                     print(' valid_cells --> ', n_valid_cells)

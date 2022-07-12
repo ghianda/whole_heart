@@ -156,7 +156,7 @@ def main(parser):
                                              [disarray_np_filenames[Mode.ARITH], disarray_np_filenames[Mode.WEIGHT],
                                               fa_np_filename]):
                 # produce and save current histograms
-                hist_filepath= plot_and_save_histogram(mtrx, xlbl, np_fname, hist_plots_path, _log=False)
+                hist_filepath = plot_and_save_histogram(mtrx, xlbl, np_fname, hist_plots_path, _log=False)
                 mess_strings.append(' > {}'.format(hist_filepath))
 
         if _save_log_hist:
@@ -176,13 +176,20 @@ def main(parser):
             mtrx_of_local_fa_perc = 100 * mtrx_of_local_fa
             # create and save frame for each data (disarrays and FA)
 
+            # generate maps of invalid value (blocks where disarray is not analyzed)
+            mtrx_of_invalid_masks = mtrx_of_disarrays[Mode.WEIGHT] < 0  # boolean
+            mtrx_of_invalid_masks = mtrx_of_invalid_masks * 255  # ldg(invalid blocks have ldg 255)
+            invalid_masks_filename = 'MASK_not_analyzed_{}_G({},{},{}).npy'.format(
+                R_prefix,
+                int(shape_G[0]), int(shape_G[1]), int(shape_G[2]))
+
             for (mtrx, np_fname) in zip(
-                    [mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa_perc],
-                    [disarray_np_filenames[Mode.ARITH], disarray_np_filenames[Mode.WEIGHT], fa_np_filename]):
+                    [mtrx_of_disarrays[Mode.ARITH], mtrx_of_disarrays[Mode.WEIGHT], mtrx_of_local_fa_perc, mtrx_of_invalid_masks],
+                    [disarray_np_filenames[Mode.ARITH], disarray_np_filenames[Mode.WEIGHT], fa_np_filename, invalid_masks_filename]):
                 # plot frames and save they in a sub_folder (map_path)
                 map_path = plot_map_and_save(mtrx, np_fname, maps_path,
                                              parameters['px_size_xy'], parameters['px_size_z'],
-                                             shape_G, shape_P, _save_MIP=True)
+                                             shape_G, shape_P, _save_MIP=True, _save_AVG=True)
                 print('> {}'.format(map_path))
         # ================================== end disarray evaluation with current grane ================================
 
@@ -193,10 +200,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Estimation of Local Disarray from Orientation vectors')
     parser.add_argument('-r', '--source-R', nargs='+', help='Filepath of the Orientation matrix to load', required=False)
     parser.add_argument('-p', '--source-P', nargs='+', help='Filename of Parameters .txt file to load', required=False)
-    parser.add_argument('-i', action='store_true', default=True, dest='histogram',
-                                                  help='save histograms of disattay values as image')
-    parser.add_argument('-l', action='store_true', default=True, dest='log_histogram',
-                        help='save histograms of log of disarray values as image')
-    parser.add_argument('-m', action='store_true', default=True, dest='maps',
-                        help='save maps of disarray and FA as frames')
+    parser.add_argument('-i', action='store_true', default=False, dest='histogram',
+                                                  help='save histograms of disarray values as images (default: False)')
+    parser.add_argument('-l', action='store_true', default=False, dest='log_histogram',
+                        help='save histograms of log of disarray values as images (default: False)')
+    parser.add_argument('-m', action='store_true', default=False, dest='maps',
+                        help='save maps of disarray and FA as frames (default: False)')
     main(parser)

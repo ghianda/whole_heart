@@ -93,6 +93,7 @@ def plot_quiver_2d_for_save(x0_c, x1_c, x0_q, x1_q, img=None, shape=None, origin
 
     dpi = fig.get_dpi()
     # plt.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
+    print("Genarated a Fig with dip: ", dpi)
 
     # plotto tiff sotto i quiver
     if img is not None:
@@ -552,9 +553,9 @@ scale = 0.07  # val più piccolo, quiver + lunghi
 # ########################################  USE THAT AS INPUT FOR ONLY ONE SAMPLE ################################################
 
 # home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/Samples/analyzed/data/CTRL'
-home_path = r'/mnt/DATA_Frank/taskForce/devel/devel_st_analysis_4.0/samples/CTRL/'
-acquisition_folder = r'N11'
-stack_name = r'N11_crop.tif'
+home_path = r'/home/francesco/LENS/Whole_Heart/mesoSPIM_AC/taskForce/Disarray/Samples/analyzed_th80%/data/PATHOL'
+acquisition_folder = r'7_months/N08'
+stack_name = r'N08.tif'
 parameter_filename = 'parameters_TaskForce.txt'
 
 plot_vectors_on_frames(home_path=home_path, acquisition_folder=acquisition_folder, stack_name=stack_name,
